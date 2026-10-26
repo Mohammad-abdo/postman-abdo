@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import fs from 'fs';
 import { audit } from '../../core/audit/audit.service';
+import { prisma } from '../../core/database/prisma';
 import { BadRequest } from '../../core/errors/http-error';
 import { currentUserId } from '../../core/middleware/auth.middleware';
 import { notificationService } from './notification.service';
@@ -22,8 +23,8 @@ const parseEvents = (raw: unknown) => {
   return undefined;
 };
 
-/** Admin dashboard: manage notification tones. */
-export const soundAdminController = {
+/** Admin dashboard: notification tones and broadcasts. */
+export const notificationAdminController = {
   list: notificationController.sounds,
 
   upload: async (req: Request, res: Response) => {
@@ -47,6 +48,13 @@ export const soundAdminController = {
     const sound = await soundService.update(req.params.id, req.body);
     audit(req, { action: 'sound.update', targetType: 'sound', targetId: sound.id, details: req.body });
     res.json(sound);
+  },
+
+  broadcast: async (req: Request, res: Response) => {
+    const actor = await prisma.user.findUnique({ where: { id: req.userId! }, select: { id: true, name: true } });
+    const result = await notificationService.broadcast({ ...req.body, actor: actor! });
+    audit(req, { action: 'notification.broadcast', targetType: req.body.workspaceId ? 'workspace' : 'platform', targetId: req.body.workspaceId, details: { title: req.body.title, sent: result.sent } });
+    res.json(result);
   },
 
   remove: async (req: Request, res: Response) => {

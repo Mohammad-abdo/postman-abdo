@@ -5,7 +5,7 @@ import path from 'path';
 import { z } from 'zod';
 import { requirePermission, requireStaff } from '../../core/middleware/auth.middleware';
 import { validateBody } from '../../core/middleware/validate.middleware';
-import { notificationController, soundAdminController } from './notification.controller';
+import { notificationController, notificationAdminController } from './notification.controller';
 import { NOTIFICATION_CATEGORIES } from './notification.types';
 import { SOUNDS_DIR } from './sound.service';
 
@@ -38,10 +38,21 @@ const soundUpdateSchema = z.object({
 /** Mounted at /api/admin/sounds. */
 export const soundAdminRoutes = Router();
 soundAdminRoutes.use(requireStaff, requirePermission('notifications.manage'));
-soundAdminRoutes.get('/', soundAdminController.list);
-soundAdminRoutes.post('/', upload.single('file'), soundAdminController.upload);
-soundAdminRoutes.put('/:id', validateBody(soundUpdateSchema), soundAdminController.update);
-soundAdminRoutes.delete('/:id', soundAdminController.remove);
+soundAdminRoutes.get('/', notificationAdminController.list);
+soundAdminRoutes.post('/', upload.single('file'), notificationAdminController.upload);
+soundAdminRoutes.put('/:id', validateBody(soundUpdateSchema), notificationAdminController.update);
+soundAdminRoutes.delete('/:id', notificationAdminController.remove);
+
+const broadcastSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  body: z.string().trim().max(2000).optional(),
+  workspaceId: z.string().optional(),
+});
+
+/** Mounted at /api/admin/broadcast. */
+export const broadcastAdminRoutes = Router();
+broadcastAdminRoutes.use(requireStaff, requirePermission('notifications.manage'));
+broadcastAdminRoutes.post('/', validateBody(broadcastSchema), notificationAdminController.broadcast);
 
 /** Public, cacheable tone files for <audio> elements. */
 export const soundFileRoutes = express.static(SOUNDS_DIR, { maxAge: '7d', immutable: true, fallthrough: false });

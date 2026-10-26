@@ -60,6 +60,35 @@ export const notificationService = {
     await this.notify([workspace.ownerId, ...alsoNotify], { coalesceMinutes: 15, ...input, workspaceId });
   },
 
+  /** Admin broadcast: one system notification per user, created in bulk and pushed live. */
+  async broadcast(input: { title: string; body?: string; workspaceId?: string; actor: { id: string; name?: string | null } }) {
+    const recipients = input.workspaceId
+      ? (await prisma.workspaceMember.findMany({ where: { workspaceId: input.workspaceId }, select: { userId: true } })).map((m) => m.userId)
+      : (await prisma.user.findMany({ where: { status: 'active' }, select: { id: true } })).map((u) => u.id);
+    const BATCH = 500;
+    for (let i = 0; i < recipients.length; i += BATCH) {
+      const batch = recipients.slice(i, i + BATCH);
+      await prisma.notification.createMany({
+        data: batch.map((userId) => ({
+          userId,
+          type: 'system.broadcast',
+          title: input.title,
+          body: input.body,
+          workspaceId: input.workspaceId ?? null,
+          actorId: input.actor.id,
+          actorName: input.actor.name ?? null,
+        })),
+      });
+      const created = await prisma.notification.findMany({
+        where: { userId: { in: batch }, type: 'system.broadcast', title: input.title, readAt: null },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['userId'],
+      });
+      for (const n of created) await pushTo(n.userId, n);
+    }
+    return { sent: recipients.length };
+  },
+
   async list(userId: string, { cursor, unreadOnly }: { cursor?: string; unreadOnly?: boolean }) {
     const items = await prisma.notification.findMany({
       where: { userId, ...(unreadOnly ? { readAt: null } : {}), ...(cursor ? { updatedAt: { lt: new Date(cursor) } } : {}) },

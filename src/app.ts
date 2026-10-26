@@ -16,7 +16,7 @@ import { adminRoutes } from './modules/admin/admin.routes';
 import { authRoutes } from './modules/auth/auth.routes';
 import { chatRoutes } from './modules/chat/chat.routes';
 import { activityTracker } from './modules/notifications/activity.middleware';
-import { notificationRoutes, soundAdminRoutes, soundFileRoutes } from './modules/notifications/notification.routes';
+import { broadcastAdminRoutes, notificationRoutes, soundAdminRoutes, soundFileRoutes } from './modules/notifications/notification.routes';
 import { codegenRoutes } from './modules/codegen/codegen.routes';
 import { collectionRoutes } from './modules/collections/collection.routes';
 import { cookieRoutes } from './modules/cookies/cookie.routes';
@@ -59,6 +59,7 @@ function apiRouter() {
   const authed = Router();
   authed.use(requireAuth, idempotency);
   authed.use('/admin/sounds', soundAdminRoutes);
+  authed.use('/admin/broadcast', broadcastAdminRoutes);
   authed.use('/admin', adminRoutes);
   authed.use(maintenanceGate);
   authed.use('/execute', rateLimits.execute());
