@@ -89,6 +89,7 @@ export function runCollection(input: RunInput): Promise<RunResult> {
         timeout: { request: settings.timeout || Infinity, script: SCRIPT_TIMEOUT_MS },
         abortOnFailure: !!input.bail,
         fileResolver: fs,
+        network: settings.restrictedAddresses ? { restrictedAddresses: settings.restrictedAddresses } : {},
         requester: {
           strictSSL: settings.strictSSL !== false,
           followRedirects: settings.followRedirects !== false,

@@ -1,28 +1,49 @@
 import bcrypt from 'bcryptjs';
 import { User } from '@prisma/client';
 import { prisma, json } from '../../core/database/prisma';
-import { Conflict, Unauthorized } from '../../core/errors/http-error';
+import { Conflict, Forbidden, Unauthorized } from '../../core/errors/http-error';
 import { signToken } from '../../core/middleware/auth.middleware';
 import { workspaceService } from '../workspaces/workspace.service';
+import { platformService } from '../platform/platform.service';
+import { loadAuthUser } from '../../core/middleware/auth.middleware';
 import { LoginInput, RegisterInput, UpdateProfileInput } from './auth.schema';
 
-const toPublicUser = (u: User) => ({ id: u.id, name: u.name, email: u.email, settings: u.settings || {} });
+export const toPublicUser = (u: User) => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  role: u.role,
+  status: u.status,
+  avatarUrl: u.avatarUrl,
+  bio: u.bio,
+  company: u.company,
+  jobTitle: u.jobTitle,
+  location: u.location,
+  website: u.website,
+  createdAt: u.createdAt,
+  settings: u.settings || {},
+});
 
 export const authService = {
   async register(input: RegisterInput) {
+    if (!(await platformService.settings()).registrationOpen) throw Forbidden('Registration is currently closed');
     if (await prisma.user.findUnique({ where: { email: input.email } })) {
       throw Conflict('An account with this email already exists');
     }
+    // The very first account becomes the platform super admin.
+    const isFirstUser = (await prisma.user.count()) === 0;
     const user = await prisma.user.create({
       data: {
+        role: isFirstUser ? 'admin' : 'user',
+        lastLoginAt: new Date(),
         name: input.name || input.email.split('@')[0],
         email: input.email,
         passwordHash: await bcrypt.hash(input.password, 10),
         settings: {},
       },
     });
-    await workspaceService.create(user.id, { name: 'My Workspace', type: 'personal' });
-    return { token: signToken(user.id), user: toPublicUser(user) };
+    await workspaceService.createPersonal(user.id);
+    return { token: signToken(user.id, user.tokenVersion), user: toPublicUser(user) };
   },
 
   async login(input: LoginInput) {
@@ -30,13 +51,16 @@ export const authService = {
     if (!user || !(await bcrypt.compare(input.password, user.passwordHash))) {
       throw Unauthorized('Invalid email or password');
     }
-    return { token: signToken(user.id), user: toPublicUser(user) };
+    if (user.status === 'suspended') throw Forbidden('Your account has been suspended. Contact support.');
+    await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    return { token: signToken(user.id, user.tokenVersion), user: toPublicUser(user) };
   },
 
   async me(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw Unauthorized();
-    return toPublicUser(user);
+    const auth = await loadAuthUser(userId);
+    return { ...toPublicUser(user), permissions: auth?.permissions || [], platform: await platformService.publicSettings() };
   },
 
   async updateProfile(userId: string, input: UpdateProfileInput) {

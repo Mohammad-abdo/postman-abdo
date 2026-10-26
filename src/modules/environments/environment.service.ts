@@ -27,7 +27,11 @@ export const environmentService = {
 
   async create(userId: string, input: CreateEnvironmentInput) {
     await assertWorkspaceMember(userId, input.workspaceId);
-    return prisma.environment.create({ data: { ...input, variables: json(input.variables) } });
+    if (input.id) {
+      const existing = await prisma.environment.findUnique({ where: { id: input.id } });
+      if (existing) return existing;
+    }
+    return prisma.environment.create({ data: { ...input, projectId: input.projectId || null, variables: json(input.variables) } });
   },
 
   async update(userId: string, id: string, input: UpdateEnvironmentInput) {

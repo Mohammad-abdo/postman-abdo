@@ -3,6 +3,7 @@ import fs from 'fs';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { env } from '../../config/env';
+import { rateLimits } from '../../core/security/rate-limit.middleware';
 import { fileController } from './file.controller';
 
 fs.mkdirSync(env.uploadDir, { recursive: true });
@@ -18,5 +19,5 @@ const upload = multer({
 
 export const fileRoutes = Router();
 
-fileRoutes.post('/', upload.single('file'), fileController.upload);
+fileRoutes.post('/', rateLimits.upload(), upload.single('file'), fileController.upload);
 fileRoutes.get('/:name', fileController.download);

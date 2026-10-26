@@ -8,6 +8,8 @@ export interface RunSettings {
   /** MB, 0 = unlimited */
   maxResponseSize?: number;
   disableCookies?: boolean;
+  /** Hosts / CIDR ranges the requester must refuse to connect to (SSRF protection). */
+  restrictedAddresses?: Record<string, boolean>;
 }
 
 export type RuntimeEvent = 'beforeItem' | 'request' | 'console' | 'item';

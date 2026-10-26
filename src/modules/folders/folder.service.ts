@@ -19,11 +19,16 @@ async function subtreeIds(folderId: string): Promise<string[]> {
 export const folderService = {
   async create(userId: string, input: CreateFolderInput) {
     await assertCollectionAccess(userId, input.collectionId);
+    if (input.id) {
+      const existing = await prisma.folder.findUnique({ where: { id: input.id } });
+      if (existing) return existing;
+    }
     const parentId = input.parentId || null;
     if (parentId) await assertFolderAccess(userId, parentId);
     const count = await prisma.folder.count({ where: { collectionId: input.collectionId, parentId } });
     return prisma.folder.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         collectionId: input.collectionId,
         parentId,
         name: input.name,

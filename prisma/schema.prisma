@@ -8,15 +8,130 @@ datasource db {
 }
 
 model User {
-  id           String            @id @default(uuid())
-  name         String
-  email        String            @unique
-  passwordHash String
-  settings     Json?
-  createdAt    DateTime          @default(now())
-  memberships  WorkspaceMember[]
-  history      HistoryItem[]
-  cookieJar    CookieJar?
+  id             String            @id @default(uuid())
+  name           String
+  email          String            @unique
+  passwordHash   String
+  settings       Json?
+  /// Platform role: user | staff | admin (admin = super admin)
+  role           String            @default("user")
+  /// active | suspended
+  status         String            @default("active")
+  staffRoleId    String?
+  /// Per-user overrides of the platform default limits
+  limits         Json?
+  avatarUrl      String?           @db.Text
+  bio            String?           @db.Text
+  company        String?
+  jobTitle       String?
+  location       String?
+  website        String?
+  /// Incremented to revoke every issued token (sign out everywhere, suspension, password change)
+  tokenVersion   Int               @default(0)
+  lastSeenAt     DateTime?
+  lastLoginAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @default(now()) @updatedAt
+  staffRole      StaffRole?        @relation(fields: [staffRoleId], references: [id], onDelete: SetNull)
+  memberships    WorkspaceMember[]
+  projectMembers ProjectMember[]
+  history        HistoryItem[]
+  cookieJar      CookieJar?
+  files          UploadedFile[]
+  usage          UsageDaily[]
+  devices        SyncDevice[]
+
+  @@index([role])
+  @@index([status])
+}
+
+/// Staff (employee) role with a set of admin-dashboard permissions.
+model StaffRole {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?  @db.Text
+  permissions Json
+  createdAt   DateTime @default(now())
+  users       User[]
+}
+
+/// Key/value platform configuration (default limits, registration, announcement...).
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorEmail String?
+  action     String
+  targetType String?
+  targetId   String?
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+/// Daily usage counters per user (requests sent, runs, uploads).
+model UsageDaily {
+  id        String   @id @default(uuid())
+  userId    String
+  date      DateTime @db.Date
+  requests  Int      @default(0)
+  runs      Int      @default(0)
+  errors    Int      @default(0)
+  bytesIn   BigInt   @default(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+}
+
+model UploadedFile {
+  id           String   @id @default(uuid())
+  userId       String
+  workspaceId  String?
+  storedName   String   @unique
+  originalName String
+  mimeType     String?
+  size         Int
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// A client device (browser or desktop app) and its offline-sync state.
+model SyncDevice {
+  id          String   @id
+  userId      String
+  platform    String   @default("web")
+  appVersion  String?
+  pendingOps  Int      @default(0)
+  lastSyncAt  DateTime?
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Replay protection for offline-queued writes (Idempotency-Key header).
+model IdempotencyRecord {
+  key        String   @id
+  userId     String
+  method     String
+  path       String   @db.Text
+  status     Int
+  response   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model Workspace {
@@ -27,7 +142,10 @@ model Workspace {
   ownerId      String
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+  /// Overrides the platform/user limit of members for this workspace
+  memberLimit  Int?
   members      WorkspaceMember[]
+  projects     Project[]
   collections  Collection[]
   environments Environment[]
   history      HistoryItem[]
@@ -47,9 +165,37 @@ model WorkspaceMember {
   @@unique([workspaceId, userId])
 }
 
+/// A project groups collections and environments inside a workspace, with its own invited members.
+model Project {
+  id           String          @id @default(uuid())
+  workspaceId  String
+  name         String
+  description  String?         @db.Text
+  color        String          @default("#FF6C37")
+  createdById  String
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members      ProjectMember[]
+  collections  Collection[]
+  environments Environment[]
+}
+
+model ProjectMember {
+  id        String  @id @default(uuid())
+  projectId String
+  userId    String
+  role      String  @default("editor")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
 model Collection {
   id               String          @id @default(uuid())
   workspaceId      String
+  projectId        String?
   name             String
   description      String?         @db.LongText
   auth             Json?
@@ -61,6 +207,7 @@ model Collection {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project          Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
   folders          Folder[]
   requests         Request[]
   mocks            MockServer[]
@@ -131,12 +278,16 @@ model Example {
 model Environment {
   id          String    @id @default(uuid())
   workspaceId String
+  projectId   String?
+  /// local | development | production | custom
+  stage       String    @default("custom")
   name        String
   isGlobal    Boolean   @default(false)
   variables   Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model HistoryItem {

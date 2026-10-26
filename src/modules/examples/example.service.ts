@@ -7,9 +7,14 @@ export const exampleService = {
   /** A new example snapshots the parent request unless one is supplied (e.g. "Save as example"). */
   async create(userId: string, input: CreateExampleInput) {
     const parent = await assertRequestAccess(userId, input.requestId);
+    if (input.id) {
+      const existing = await prisma.example.findUnique({ where: { id: input.id } });
+      if (existing) return existing;
+    }
     const count = await prisma.example.count({ where: { requestId: parent.id } });
     return prisma.example.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         requestId: parent.id,
         name: input.name || parent.name,
         request: json(input.request || {

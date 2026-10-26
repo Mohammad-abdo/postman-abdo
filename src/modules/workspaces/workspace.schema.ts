@@ -1,12 +1,13 @@
 import { z } from 'zod';
 
 export const createWorkspaceSchema = z.object({
+  id: z.string().uuid().optional(),
   name: z.string().trim().min(1).default('Untitled Workspace'),
   description: z.string().optional(),
   type: z.enum(['personal', 'team']).default('personal'),
 });
 
-export const updateWorkspaceSchema = createWorkspaceSchema.partial();
+export const updateWorkspaceSchema = createWorkspaceSchema.omit({ id: true }).partial();
 
 export const addMemberSchema = z.object({
   email: z.string().trim().toLowerCase().email(),

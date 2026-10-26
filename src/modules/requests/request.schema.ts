@@ -19,6 +19,7 @@ export const requestFieldsSchema = z.object({
 });
 
 export const createRequestSchema = requestFieldsSchema.partial().extend({
+  id: z.string().uuid().optional(),
   collectionId: id,
   folderId: id.nullable().optional(),
 });

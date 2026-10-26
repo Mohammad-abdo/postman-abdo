@@ -26,12 +26,16 @@ const defaults = () => ({
 
 export const requestService = {
   async create(userId: string, input: CreateRequestInput) {
-    const { collectionId, folderId, ...fields } = input;
+    const { collectionId, folderId, id, ...fields } = input;
     await assertCollectionAccess(userId, collectionId);
+    if (id) {
+      const existing = await prisma.request.findUnique({ where: { id } });
+      if (existing) return existing;
+    }
     if (folderId) await assertFolderAccess(userId, folderId);
     const count = await prisma.request.count({ where: { collectionId, folderId: folderId || null } });
     return prisma.request.create({
-      data: { ...defaults(), ...fields, collectionId, folderId: folderId || null, sortOrder: count } as Prisma.RequestUncheckedCreateInput,
+      data: { ...defaults(), ...fields, ...(id ? { id } : {}), collectionId, folderId: folderId || null, sortOrder: count } as Prisma.RequestUncheckedCreateInput,
     });
   },
 

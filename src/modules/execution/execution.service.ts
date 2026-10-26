@@ -1,4 +1,7 @@
 import { randomUUID } from 'crypto';
+import { env } from '../../config/env';
+import { PRIVATE_NETWORKS } from '../../core/security/security.middleware';
+import { limitsService } from '../platform/limits.service';
 import { prisma, json } from '../../core/database/prisma';
 import { requestToV21Item } from '../../shared/postman/request.mapper';
 import { RequestModel } from '../../shared/postman/types';
@@ -22,6 +25,7 @@ function resolveSettings(user: Record<string, any>, request: Record<string, any>
     timeout: Number(user.requestTimeout) || 0,
     maxResponseSize: Number(user.maxResponseSize) || 0,
     disableCookies: !!request.disableCookies,
+    restrictedAddresses: env.blockPrivateNetworks ? PRIVATE_NETWORKS : undefined,
   };
 }
 
@@ -34,6 +38,7 @@ export const executionService = {
   /** The "Send" button: runs one (possibly unsaved) request with its collection's scripts, auth and variables. */
   async send(userId: string, input: SendRequestInput) {
     await assertWorkspaceMember(userId, input.workspaceId);
+    await limitsService.consumeRequests(userId, 1);
     const draft = { ...input.request, id: input.request.id || randomUUID() } as RequestModel;
     const collectionId = input.request.collectionId || null;
     if (collectionId) await assertCollectionAccess(userId, collectionId);
@@ -55,6 +60,7 @@ export const executionService = {
     const variableUpdates = await persistScopes(result, scopes, collectionId);
 
     const execution = result.executions[result.executions.length - 1] || null;
+    await limitsService.recordUsage(userId, { errors: execution?.error ? 1 : 0, bytes: execution?.response?.size.total || 0 });
     const history =
       execution && (execution.request || execution.error)
         ? await historyService.record({
@@ -74,6 +80,8 @@ export const executionService = {
   async run(userId: string, input: RunCollectionInput, hooks: RunHooks) {
     await assertWorkspaceMember(userId, input.workspaceId);
     const collection = await assertCollectionAccess(userId, input.collectionId);
+    const requestCount = input.requestIds?.length || (await prisma.request.count({ where: { collectionId: input.collectionId, type: 'http' } }));
+    await limitsService.consumeRequests(userId, Math.max(requestCount, 1) * input.iterations, 'runs');
     const scopes = await loadScopes(input.workspaceId, input.environmentId);
     const jar = await cookieService.load(userId);
     const hasData = !!input.data?.length;

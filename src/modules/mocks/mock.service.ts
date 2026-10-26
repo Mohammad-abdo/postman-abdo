@@ -5,6 +5,7 @@ import { KeyValue } from '../../shared/postman/types';
 import { scopeValues } from '../../shared/postman/variables';
 import { assertCollectionAccess } from '../collections/collection.access';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
+import { limitsService } from '../platform/limits.service';
 import { MockQuery, findBestMatch, replaceVariables } from './mock.matcher';
 import { CreateMockInput, UpdateMockInput } from './mock.schema';
 
@@ -39,6 +40,7 @@ export const mockService = {
   async create(userId: string, input: CreateMockInput) {
     await assertWorkspaceMember(userId, input.workspaceId);
     await assertCollectionAccess(userId, input.collectionId);
+    await limitsService.assertCanCreateMock(input.workspaceId);
     return prisma.mockServer.create({
       data: { ...input, environmentId: input.environmentId || null, apiKey: input.isPrivate ? newApiKey() : null },
     });

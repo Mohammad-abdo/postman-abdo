@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { authSchema, id, scriptSchema } from '../../shared/validation/common.schema';
 
 export const createFolderSchema = z.object({
+  id: z.string().uuid().optional(),
   collectionId: id,
   parentId: id.nullable().optional(),
   name: z.string().trim().min(1).default('New Folder'),

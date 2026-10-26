@@ -11,7 +11,7 @@ const exampleFields = z.object({
   language: z.string(),
 });
 
-export const createExampleSchema = exampleFields.partial().extend({ requestId: id });
+export const createExampleSchema = exampleFields.partial().extend({ requestId: id, id: z.string().uuid().optional() });
 export const updateExampleSchema = exampleFields.partial();
 
 export type CreateExampleInput = z.infer<typeof createExampleSchema>;

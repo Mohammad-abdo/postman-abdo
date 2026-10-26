@@ -2,12 +2,15 @@ import { z } from 'zod';
 import { authSchema, id, scriptSchema, variableSchema } from '../../shared/validation/common.schema';
 
 export const createCollectionSchema = z.object({
+  id: z.string().uuid().optional(),
   workspaceId: id,
+  projectId: id.nullable().optional(),
   name: z.string().trim().min(1).default('New Collection'),
   description: z.string().optional(),
 });
 
 export const updateCollectionSchema = z.object({
+  projectId: id.nullable().optional(),
   name: z.string().trim().min(1).optional(),
   description: z.string().nullable().optional(),
   auth: authSchema.optional(),

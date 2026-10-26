@@ -3,6 +3,7 @@ import { prisma } from '../../core/database/prisma';
 import { reorder } from '../../core/utils/object';
 import { CollectionRenderOptions, renderCollection } from '../../shared/postman/collection.renderer';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
+import { limitsService } from '../platform/limits.service';
 import { transferService } from '../transfer/transfer.service';
 import { assertCollectionAccess } from './collection.access';
 import { CreateCollectionInput, UpdateCollectionInput } from './collection.schema';
@@ -12,10 +13,17 @@ const ordered = [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }];
 export const collectionService = {
   async create(userId: string, input: CreateCollectionInput) {
     await assertWorkspaceMember(userId, input.workspaceId);
+    if (input.id) {
+      const existing = await prisma.collection.findUnique({ where: { id: input.id } });
+      if (existing) return existing;
+    }
+    await limitsService.assertCanCreateCollection(input.workspaceId);
     const count = await prisma.collection.count({ where: { workspaceId: input.workspaceId } });
     return prisma.collection.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         workspaceId: input.workspaceId,
+        projectId: input.projectId || null,
         name: input.name,
         description: input.description || '',
         auth: { type: 'noauth' },

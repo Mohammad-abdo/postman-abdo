@@ -1,4 +1,6 @@
+import { env } from '../../config/env';
 import { prisma, json } from '../../core/database/prisma';
+import { PRIVATE_NETWORKS } from '../../core/security/security.middleware';
 import { NotFound } from '../../core/errors/http-error';
 import { assertCollectionAccess } from '../collections/collection.access';
 import { collectionService } from '../collections/collection.service';
@@ -6,6 +8,7 @@ import { runCollection } from '../execution/runtime/runtime.adapter';
 import { stripBody } from '../execution/runtime/serializers';
 import { loadScopes, runtimeValues } from '../execution/variable-scopes';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
+import { limitsService } from '../platform/limits.service';
 import { CreateMonitorInput, UpdateMonitorInput } from './monitor.schema';
 import { MonitorScheduler } from './monitor.scheduler';
 
@@ -24,6 +27,7 @@ async function execute(monitorId: string) {
   const result = await runCollection({
     collection: await collectionService.toPostman(monitor.collectionId, { forRun: true, useCurrentValues: true }),
     ...runtimeValues(await loadScopes(monitor.workspaceId, monitor.environmentId)),
+    settings: { restrictedAddresses: env.blockPrivateNetworks ? PRIVATE_NETWORKS : undefined },
   });
   await prisma.monitor.update({ where: { id: monitorId }, data: { lastRunAt: new Date() } });
   return prisma.collectionRun.create({
@@ -54,6 +58,7 @@ export const monitorService = {
   async create(userId: string, input: CreateMonitorInput) {
     await assertWorkspaceMember(userId, input.workspaceId);
     await assertCollectionAccess(userId, input.collectionId);
+    await limitsService.assertCanCreateMonitor(input.workspaceId);
     const monitor = await prisma.monitor.create({ data: { ...input, environmentId: input.environmentId || null } });
     scheduler.schedule(monitor);
     return monitor;
