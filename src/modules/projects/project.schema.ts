@@ -11,6 +11,8 @@ export const createProjectSchema = z.object({
   color: color.default('#FF6C37'),
   /** Workspace members to add right away. */
   memberIds: z.array(id).default([]),
+  /** Add every member of the workspace ("Add whole team"). */
+  addAllMembers: z.boolean().default(false),
   /** Create an empty collection inside the project. */
   initialCollection: z.string().trim().max(120).optional(),
   /** Base URLs for the Local / Development / Production environments. */
@@ -25,10 +27,16 @@ export const updateProjectSchema = z.object({
   color: color.optional(),
 });
 
-export const addProjectMemberSchema = z.object({
-  userId: id,
-  role: z.enum(['admin', 'editor', 'viewer']).default('editor'),
-});
+/** Specific people (`userIds`, or a single `userId`) or the whole workspace team (`all: true`). */
+export const addProjectMembersSchema = z
+  .object({
+    userId: id.optional(),
+    userIds: z.array(id).default([]),
+    all: z.boolean().default(false),
+    role: z.enum(['admin', 'editor', 'viewer']).default('editor'),
+  })
+  .transform(({ userId, ...rest }) => ({ ...rest, userIds: userId ? [...rest.userIds, userId] : rest.userIds }))
+  .refine((v) => v.all || v.userIds.length > 0, 'Pick at least one member or add the whole team');
 
 export const updateProjectMemberSchema = z.object({
   role: z.enum(['admin', 'editor', 'viewer']),
@@ -36,4 +44,4 @@ export const updateProjectMemberSchema = z.object({
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
-export type AddProjectMemberInput = z.infer<typeof addProjectMemberSchema>;
+export type AddProjectMembersInput = z.infer<typeof addProjectMembersSchema>;

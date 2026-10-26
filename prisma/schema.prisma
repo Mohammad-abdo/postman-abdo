@@ -40,6 +40,9 @@ model User {
   files          UploadedFile[]
   usage          UsageDaily[]
   devices        SyncDevice[]
+  notifications  Notification[]           @relation("NotificationRecipient")
+  conversations  ConversationMember[]
+  messages       Message[]
 
   @@index([role])
   @@index([status])
@@ -146,6 +149,7 @@ model Workspace {
   memberLimit  Int?
   members      WorkspaceMember[]
   projects     Project[]
+  conversations Conversation[]
   collections  Collection[]
   environments Environment[]
   history      HistoryItem[]
@@ -353,4 +357,91 @@ model CollectionRun {
   createdAt    DateTime   @default(now())
   workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+}
+
+/// In-app notification for one recipient. Repeated identical events are coalesced into `count`.
+model Notification {
+  id          String    @id @default(uuid())
+  userId      String
+  workspaceId String?
+  projectId   String?
+  actorId     String?
+  actorName   String?
+  /// e.g. member.added, project.invited, collection.created, request.updated, message.mention
+  type        String
+  title       String
+  body        String?   @db.Text
+  /// Where clicking the notification leads, e.g. { kind: 'request', id, workspaceId }
+  link        Json?
+  count       Int       @default(1)
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, updatedAt])
+}
+
+/// Notification tones uploaded by admins; `events` lists the notification categories that use it.
+model NotificationSound {
+  id         String   @id @default(uuid())
+  name       String
+  storedName String   @unique
+  mimeType   String
+  size       Int
+  events     Json
+  isDefault  Boolean  @default(false)
+  volume     Float    @default(0.8)
+  createdAt  DateTime @default(now())
+}
+
+/// Team chat: workspace channels, project channels and direct messages.
+model Conversation {
+  id            String               @id @default(uuid())
+  workspaceId   String
+  projectId     String?
+  /// channel | direct
+  type          String
+  name          String?
+  /// For direct messages: sorted "userA:userB" so each pair has one conversation.
+  directKey     String?              @unique
+  isDefault     Boolean              @default(false)
+  createdById   String
+  lastMessageAt DateTime             @default(now())
+  createdAt     DateTime             @default(now())
+  workspace     Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members       ConversationMember[]
+  messages      Message[]
+
+  @@index([workspaceId, lastMessageAt])
+}
+
+model ConversationMember {
+  id             String       @id @default(uuid())
+  conversationId String
+  userId         String
+  lastReadAt     DateTime     @default(now())
+  muted          Boolean      @default(false)
+  joinedAt       DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  senderId       String
+  body           String       @db.Text
+  /// Users mentioned with @name
+  mentions       Json?
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }
