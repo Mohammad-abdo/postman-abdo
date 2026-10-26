@@ -98,6 +98,14 @@ async function resolveFromBody(body: any): Promise<string | null> {
   return null;
 }
 
+/** A freshly created entity: describe it from the response (examples link to their request's workspace). */
+async function targetFromCreation(kind: Kind, body: any, response: any): Promise<Target | null> {
+  const workspaceId = response?.workspaceId || (await resolveFromBody(body));
+  if (!workspaceId) return null;
+  const link: NotificationLink = kind === 'example' ? { kind: 'workspace', workspaceId } : { kind, id: response?.id, workspaceId };
+  return { workspaceId, projectId: response?.projectId, name: response?.name || body?.name, link };
+}
+
 const userName = (userId: string) =>
   cache.wrap(`user-name:${userId}`, 300, async () => (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name || 'Someone');
 
@@ -122,12 +130,8 @@ export function activityTracker(req: Request, res: Response, next: NextFunction)
   res.on('finish', async () => {
     if (res.statusCode >= 300 || res.getHeader('Idempotent-Replay')) return;
     try {
-      let target = await pending;
-      if (!target) {
-        const workspaceId = responseBody?.workspaceId || (await resolveFromBody(req.body));
-        if (!workspaceId) return;
-        target = { workspaceId, name: responseBody?.name || req.body?.name, link: { kind, id: responseBody?.id, workspaceId } };
-      }
+      const target = (await pending) || (await targetFromCreation(kind, req.body, responseBody));
+      if (!target) return;
       const verb = (action && ACTION_VERBS[action]) || (req.method === 'DELETE' ? 'deleted' : hasId ? 'updated' : 'created');
       const actorName = await userName(req.userId!);
       await notificationService.workspaceEvent(target.workspaceId, {
