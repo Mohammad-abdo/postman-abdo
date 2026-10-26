@@ -18,6 +18,9 @@ export const workspaceController = {
     await workspaceService.removeMember(currentUserId(req), req.params.id, req.params.userId);
     res.json({ ok: true });
   },
+  updateMember: async (req: Request, res: Response) =>
+    res.json(await workspaceService.updateMember(currentUserId(req), req.params.id, req.params.userId, req.body)),
+  overview: async (req: Request, res: Response) => res.json(await workspaceService.overview(currentUserId(req), req.params.id)),
   tree: async (req: Request, res: Response) => res.json(await workspaceService.tree(currentUserId(req), req.params.id)),
   search: async (req: Request, res: Response) =>
     res.json(await workspaceService.search(currentUserId(req), req.params.id, String(req.query.q || ''))),

@@ -1,10 +1,10 @@
 import { prisma } from '../../core/database/prisma';
-import { BadRequest, NotFound } from '../../core/errors/http-error';
+import { BadRequest, Forbidden, NotFound } from '../../core/errors/http-error';
 import { limitsService } from '../platform/limits.service';
 import { assertWorkspaceAdmin, assertWorkspaceMember } from './workspace.access';
-import { AddMemberInput, CreateWorkspaceInput, UpdateWorkspaceInput } from './workspace.schema';
+import { AddMemberInput, CreateWorkspaceInput, UpdateMemberInput, UpdateWorkspaceInput } from './workspace.schema';
 
-const memberUser = { select: { id: true, name: true, email: true } } as const;
+const memberUser = { select: { id: true, name: true, email: true, avatarUrl: true, jobTitle: true, lastSeenAt: true } } as const;
 
 export const workspaceService = {
   list(userId: string) {
@@ -45,7 +45,7 @@ export const workspaceService = {
   },
 
   async update(userId: string, id: string, input: UpdateWorkspaceInput) {
-    await assertWorkspaceMember(userId, id);
+    await assertWorkspaceAdmin(userId, id);
     return prisma.workspace.update({ where: { id }, data: input });
   },
 
@@ -58,7 +58,7 @@ export const workspaceService = {
   },
 
   async addMember(userId: string, id: string, input: AddMemberInput) {
-    await assertWorkspaceMember(userId, id);
+    await assertWorkspaceAdmin(userId, id);
     const user = await prisma.user.findUnique({ where: { email: input.email } });
     if (!user) throw NotFound('No user with this email exists');
     const alreadyMember = await prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: id, userId: user.id } } });
@@ -71,9 +71,53 @@ export const workspaceService = {
     await prisma.workspace.update({ where: { id }, data: { type: 'team' } });
   },
 
+  /** Admins remove members; any member can remove themselves (leave). The owner always stays. */
   async removeMember(userId: string, id: string, memberId: string) {
+    if (memberId === userId) await assertWorkspaceMember(userId, id);
+    else await assertWorkspaceAdmin(userId, id);
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id }, select: { ownerId: true } });
+    if (memberId === workspace.ownerId) throw BadRequest('The workspace owner cannot be removed or leave the workspace');
+    await prisma.$transaction([
+      prisma.projectMember.deleteMany({ where: { userId: memberId, project: { workspaceId: id } } }),
+      prisma.workspaceMember.deleteMany({ where: { workspaceId: id, userId: memberId } }),
+    ]);
+  },
+
+  async updateMember(userId: string, id: string, memberId: string, input: UpdateMemberInput) {
     await assertWorkspaceAdmin(userId, id);
-    await prisma.workspaceMember.deleteMany({ where: { workspaceId: id, userId: memberId } });
+    const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id }, select: { ownerId: true } });
+    if (memberId === workspace.ownerId && input.role !== 'admin') throw Forbidden('The workspace owner is always an admin');
+    const member = await prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: id, userId: memberId } } });
+    if (!member) throw NotFound('Member not found');
+    return prisma.workspaceMember.update({ where: { id: member.id }, data: { role: input.role } });
+  },
+
+  /** Everything the workspace page shows: members, limit, counts and projects. */
+  async overview(userId: string, id: string) {
+    const membership = await assertWorkspaceMember(userId, id);
+    const [workspace, memberLimit, collections, environments, requests, projects] = await Promise.all([
+      prisma.workspace.findUniqueOrThrow({
+        where: { id },
+        include: { members: { include: { user: memberUser }, orderBy: { id: 'asc' } } },
+      }),
+      limitsService.memberLimit(id),
+      prisma.collection.count({ where: { workspaceId: id, deletedAt: null } }),
+      prisma.environment.count({ where: { workspaceId: id, isGlobal: false } }),
+      prisma.request.count({ where: { collection: { workspaceId: id, deletedAt: null } } }),
+      prisma.project.findMany({
+        where: { workspaceId: id },
+        orderBy: { createdAt: 'asc' },
+        include: { _count: { select: { members: true, collections: true, environments: true } } },
+      }),
+    ]);
+    return {
+      workspace: { id: workspace.id, name: workspace.name, description: workspace.description, type: workspace.type, ownerId: workspace.ownerId, createdAt: workspace.createdAt },
+      myRole: membership.role,
+      members: workspace.members.map((m) => ({ userId: m.userId, role: m.role, isOwner: m.userId === workspace.ownerId, user: m.user })),
+      memberLimit,
+      counts: { members: workspace.members.length, collections, environments, requests, projects: projects.length },
+      projects,
+    };
   },
 
   /** Everything the sidebar needs in one round trip. */

@@ -14,6 +14,15 @@ export const addMemberSchema = z.object({
   role: z.enum(['admin', 'editor', 'viewer']).default('editor'),
 });
 
+export const updateMemberSchema = z.object({
+  role: z.enum(['admin', 'editor', 'viewer']),
+});
+
+export const memberLimitSchema = z.object({
+  memberLimit: z.number().int().min(1).nullable(),
+});
+
+export type UpdateMemberInput = z.infer<typeof updateMemberSchema>;
 export type CreateWorkspaceInput = z.input<typeof createWorkspaceSchema>;
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceSchema>;
 export type AddMemberInput = z.infer<typeof addMemberSchema>;

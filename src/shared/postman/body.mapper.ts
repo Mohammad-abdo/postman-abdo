@@ -1,12 +1,12 @@
 import path from 'path';
-import { env } from '../../config/env';
+import { engineConfig } from './engine.config';
 import { descriptionText, kvFromV2, kvToV21 } from './kv.mapper';
 import { BodyModel, FormDataField, V2Json, emptyBody } from './types';
 
 /** Uploaded files are stored by id; at run time the runtime needs absolute paths. */
 function fileSrc(src: string | undefined, forRun?: boolean) {
   if (!src) return null;
-  return forRun ? path.join(env.uploadDir, path.basename(src)) : src;
+  return forRun ? path.join(engineConfig.uploadDir, path.basename(src)) : src;
 }
 
 export function bodyToV21(body: BodyModel | undefined | null, forRun?: boolean): V2Json | undefined {
