@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import YAML from 'yaml';
-import { prisma, json } from '../../core/database/prisma';
+import { prisma, json as toJsonColumn } from '../../core/database/prisma';
 import { BadRequest } from '../../core/errors/http-error';
 import { authFromV2 } from '../../shared/postman/auth.mapper';
 import { descriptionText } from '../../shared/postman/kv.mapper';
@@ -70,8 +70,8 @@ export const transferService = {
         workspaceId,
         name: nameOverride || info.name || 'Imported Collection',
         description: descriptionText(info.description),
-        auth: json(authFromV2(collection.auth)),
-        variables: json(variablesFromV2(collection.variable)),
+        auth: toJsonColumn(authFromV2(collection.auth)),
+        variables: toJsonColumn(variablesFromV2(collection.variable)),
         preRequestScript: scripts.pre,
         testScript: scripts.test,
         sortOrder: await prisma.collection.count({ where: { workspaceId } }),
@@ -94,11 +94,11 @@ export const transferService = {
       const globals = await prisma.environment.findFirst({ where: { workspaceId, isGlobal: true } });
       if (globals) {
         const existing = ((globals.variables as unknown as Variable[]) || []).filter((e) => !values.some((v) => v.key === e.key));
-        return prisma.environment.update({ where: { id: globals.id }, data: { variables: json([...existing, ...values]) } });
+        return prisma.environment.update({ where: { id: globals.id }, data: { variables: toJsonColumn([...existing, ...values]) } });
       }
     }
     return prisma.environment.create({
-      data: { workspaceId, name: json.name || 'Imported Environment', variables: json(values) },
+      data: { workspaceId, name: json.name || 'Imported Environment', variables: toJsonColumn(values) },
     });
   },
 
