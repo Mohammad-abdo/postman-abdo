@@ -98,3 +98,9 @@ export async function notifyWorkspaceEvent(event: WorkspaceEvent | null) {
     console.error('workspace event notification failed', e);
   }
 }
+
+/** Controller helper: fires the notification for a `{ result, event }` service outcome and returns the result. */
+export function withNotification<T>(outcome: { result: T; event: WorkspaceEvent | null }): T {
+  void notifyWorkspaceEvent(outcome.event);
+  return outcome.result;
+}

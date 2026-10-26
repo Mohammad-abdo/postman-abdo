@@ -107,6 +107,8 @@ export function activityTracker(req: Request, res: Response, next: NextFunction)
   const kind = RESOURCES[resource];
   // Member changes have their own, more specific notifications.
   if (!kind || action === 'members' || id === 'trash') return next();
+  // Project creation/deletion and membership have dedicated notifications (workspace-event.notifier).
+  if (kind === 'project' && (!id || req.method === 'DELETE' || action)) return next();
 
   const hasId = !!id;
   const pending = (hasId ? resolveById(kind, id) : Promise.resolve(null)).catch(() => null);
