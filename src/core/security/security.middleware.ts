@@ -24,7 +24,7 @@ export function applySecurity(app: Express) {
           'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
           'img-src': ["'self'", 'data:', 'blob:', 'https:'],
           'frame-src': ["'self'", 'data:', 'blob:'],
-          'connect-src': ["'self'", 'ws:', 'wss:', ...env.corsOrigins],
+          'connect-src': ["'self'", 'ws:', 'wss:', 'https:', ...env.corsOrigins.filter((o) => o !== '*')],
         },
       },
       crossOriginEmbedderPolicy: false,
@@ -32,11 +32,15 @@ export function applySecurity(app: Express) {
     }),
   );
 
+  // CORS_ORIGINS="*" (or empty) allows any origin; otherwise only the listed ones (trailing slashes ignored).
+  const allowed = env.corsOrigins.map((o) => o.replace(/\/+$/, ''));
+  const allowAll = !allowed.length || allowed.includes('*');
+
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (!origin || !env.corsOrigins.length || env.corsOrigins.includes(origin)) return callback(null, true);
-        callback(new Error(`Origin ${origin} is not allowed`));
+        // Disallowed origins simply get no CORS headers (the browser blocks them) instead of a server error.
+        callback(null, allowAll || !origin || allowed.includes(origin.replace(/\/+$/, '')));
       },
       credentials: true,
       exposedHeaders: ['Content-Disposition', 'Retry-After', 'RateLimit-Remaining'],
