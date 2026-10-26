@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String            @id @default(uuid())
+  name         String
+  email        String            @unique
+  passwordHash String
+  settings     Json?
+  createdAt    DateTime          @default(now())
+  memberships  WorkspaceMember[]
+  history      HistoryItem[]
+  cookieJar    CookieJar?
+}
+
+model Workspace {
+  id           String            @id @default(uuid())
+  name         String
+  description  String?           @db.Text
+  type         String            @default("personal")
+  ownerId      String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  members      WorkspaceMember[]
+  collections  Collection[]
+  environments Environment[]
+  history      HistoryItem[]
+  mocks        MockServer[]
+  monitors     Monitor[]
+  runs         CollectionRun[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        String    @default("editor")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model Collection {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  name             String
+  description      String?         @db.LongText
+  auth             Json?
+  variables        Json?
+  preRequestScript String?         @db.LongText
+  testScript       String?         @db.LongText
+  sortOrder        Int             @default(0)
+  deletedAt        DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folders          Folder[]
+  requests         Request[]
+  mocks            MockServer[]
+  monitors         Monitor[]
+  runs             CollectionRun[]
+}
+
+model Folder {
+  id               String     @id @default(uuid())
+  collectionId     String
+  parentId         String?
+  name             String
+  description      String?    @db.LongText
+  auth             Json?
+  preRequestScript String?    @db.LongText
+  testScript       String?    @db.LongText
+  sortOrder        Int        @default(0)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  collection       Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  parent           Folder?    @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children         Folder[]   @relation("FolderTree")
+  requests         Request[]
+}
+
+model Request {
+  id               String     @id @default(uuid())
+  collectionId     String
+  folderId         String?
+  type             String     @default("http")
+  name             String
+  method           String     @default("GET")
+  url              String     @db.Text
+  params           Json?
+  pathVariables    Json?
+  headers          Json?
+  body             Json?
+  auth             Json?
+  preRequestScript String?    @db.LongText
+  testScript       String?    @db.LongText
+  settings         Json?
+  messages         Json?
+  description      String?    @db.LongText
+  sortOrder        Int        @default(0)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  collection       Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  folder           Folder?    @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  examples         Example[]
+}
+
+model Example {
+  id        String   @id @default(uuid())
+  requestId String
+  name      String
+  request   Json?
+  code      Int      @default(200)
+  status    String   @default("OK")
+  headers   Json?
+  body      String?  @db.LongText
+  language  String   @default("json")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  parent    Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model Environment {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  isGlobal    Boolean   @default(false)
+  variables   Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model HistoryItem {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  method      String
+  url         String    @db.Text
+  name        String?
+  request     Json
+  response    Json?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, createdAt])
+}
+
+model CookieJar {
+  id     String @id @default(uuid())
+  userId String @unique
+  data   String @db.LongText
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MockServer {
+  id            String     @id @default(uuid())
+  workspaceId   String
+  collectionId  String
+  environmentId String?
+  name          String
+  delay         Int        @default(0)
+  isPrivate     Boolean    @default(false)
+  apiKey        String?
+  createdAt     DateTime   @default(now())
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  collection    Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+}
+
+model Monitor {
+  id            String     @id @default(uuid())
+  workspaceId   String
+  collectionId  String
+  environmentId String?
+  name          String
+  cron          String     @default("0 * * * *")
+  enabled       Boolean    @default(true)
+  lastRunAt     DateTime?
+  createdAt     DateTime   @default(now())
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  collection    Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+}
+
+model CollectionRun {
+  id           String     @id @default(uuid())
+  workspaceId  String
+  collectionId String
+  monitorId    String?
+  source       String     @default("runner")
+  name         String
+  stats        Json?
+  results      Json?
+  createdAt    DateTime   @default(now())
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+}

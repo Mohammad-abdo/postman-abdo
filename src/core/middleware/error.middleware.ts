@@ -1,0 +1,13 @@
+import { NextFunction, Request, Response } from 'express';
+import { ZodError } from 'zod';
+import { HttpError } from '../errors/http-error';
+
+export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+  if (err instanceof ZodError) {
+    const first = err.issues[0];
+    return res.status(400).json({ error: `${first.path.join('.') || 'body'}: ${first.message}`, issues: err.issues });
+  }
+  if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
+  console.error(err);
+  res.status(500).json({ error: err instanceof Error ? err.message : 'Internal Server Error' });
+}
