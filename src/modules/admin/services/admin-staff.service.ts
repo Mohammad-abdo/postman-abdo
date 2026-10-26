@@ -74,13 +74,25 @@ export const adminStaffService = {
 
   /* ---------- roles ---------- */
   async listRoles() {
-    const roles = await prisma.staffRole.findMany({ orderBy: { createdAt: 'asc' }, include: { _count: { select: { users: true } } } });
-    return roles.map(({ _count, ...r }) => ({ ...r, members: _count.users }));
+    const roles = await prisma.staffRole.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: { users: { select: { id: true, name: true, email: true, avatarUrl: true }, orderBy: { name: 'asc' } } },
+    });
+    return roles.map(({ users, ...r }) => ({ ...r, members: users.length, users }));
   },
 
   async createRole(input: RoleInput) {
     if (await prisma.staffRole.findUnique({ where: { name: input.name } })) throw Conflict('A role with this name exists');
     return prisma.staffRole.create({ data: { name: input.name, description: input.description || null, permissions: input.permissions } });
+  },
+
+  /** Copies a role's permissions under a free "<name> Copy" name. */
+  async duplicateRole(id: string) {
+    const role = await prisma.staffRole.findUnique({ where: { id } });
+    if (!role) throw NotFound('Role not found');
+    let name = `${role.name} Copy`;
+    for (let i = 2; await prisma.staffRole.findUnique({ where: { name } }); i++) name = `${role.name} Copy ${i}`;
+    return prisma.staffRole.create({ data: { name, description: role.description, permissions: role.permissions as string[] } });
   },
 
   async updateRole(id: string, input: Partial<RoleInput>) {

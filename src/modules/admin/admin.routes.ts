@@ -47,6 +47,7 @@ adminRoutes.delete('/staff/:userId', can('staff.manage'), c.demoteStaff);
 
 adminRoutes.get('/roles', can('roles.manage'), c.listRoles);
 adminRoutes.post('/roles', can('roles.manage'), validateBody(roleSchema), c.createRole);
+adminRoutes.post('/roles/:id/duplicate', can('roles.manage'), c.duplicateRole);
 adminRoutes.put('/roles/:id', can('roles.manage'), validateBody(updateRoleSchema), c.updateRole);
 adminRoutes.delete('/roles/:id', can('roles.manage'), c.deleteRole);
 

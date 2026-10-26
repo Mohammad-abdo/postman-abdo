@@ -2,6 +2,7 @@ import { prisma } from '../../core/database/prisma';
 import { BadRequest, Forbidden, NotFound } from '../../core/errors/http-error';
 import { limitsService } from '../platform/limits.service';
 import { assertWorkspaceAdmin, assertWorkspaceMember } from './workspace.access';
+import { WithEvent } from './workspace.events';
 import { AddMemberInput, CreateWorkspaceInput, UpdateMemberInput, UpdateWorkspaceInput } from './workspace.schema';
 
 const memberUser = { select: { id: true, name: true, email: true, avatarUrl: true, jobTitle: true, lastSeenAt: true } } as const;
@@ -57,7 +58,7 @@ export const workspaceService = {
     await prisma.workspace.delete({ where: { id } });
   },
 
-  async addMember(userId: string, id: string, input: AddMemberInput) {
+  async addMember(userId: string, id: string, input: AddMemberInput): Promise<WithEvent<{ userId: string; role: string }>> {
     await assertWorkspaceAdmin(userId, id);
     const user = await prisma.user.findUnique({ where: { email: input.email } });
     if (!user) throw NotFound('No user with this email exists');
@@ -69,10 +70,20 @@ export const workspaceService = {
       update: { role: input.role },
     });
     await prisma.workspace.update({ where: { id }, data: { type: 'team' } });
+    return {
+      result: { userId: user.id, role: input.role },
+      event: {
+        type: alreadyMember ? 'workspace.member_role_changed' : 'workspace.member_added',
+        actorId: userId,
+        workspaceId: id,
+        targetUserIds: [user.id],
+        role: input.role,
+      },
+    };
   },
 
   /** Admins remove members; any member can remove themselves (leave). The owner always stays. */
-  async removeMember(userId: string, id: string, memberId: string) {
+  async removeMember(userId: string, id: string, memberId: string): Promise<WithEvent<{ ok: true }>> {
     if (memberId === userId) await assertWorkspaceMember(userId, id);
     else await assertWorkspaceAdmin(userId, id);
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id }, select: { ownerId: true } });
@@ -81,15 +92,23 @@ export const workspaceService = {
       prisma.projectMember.deleteMany({ where: { userId: memberId, project: { workspaceId: id } } }),
       prisma.workspaceMember.deleteMany({ where: { workspaceId: id, userId: memberId } }),
     ]);
+    return {
+      result: { ok: true },
+      event: { type: memberId === userId ? 'workspace.member_left' : 'workspace.member_removed', actorId: userId, workspaceId: id, targetUserIds: [memberId] },
+    };
   },
 
-  async updateMember(userId: string, id: string, memberId: string, input: UpdateMemberInput) {
+  async updateMember(userId: string, id: string, memberId: string, input: UpdateMemberInput): Promise<WithEvent<unknown>> {
     await assertWorkspaceAdmin(userId, id);
     const workspace = await prisma.workspace.findUniqueOrThrow({ where: { id }, select: { ownerId: true } });
     if (memberId === workspace.ownerId && input.role !== 'admin') throw Forbidden('The workspace owner is always an admin');
     const member = await prisma.workspaceMember.findUnique({ where: { workspaceId_userId: { workspaceId: id, userId: memberId } } });
     if (!member) throw NotFound('Member not found');
-    return prisma.workspaceMember.update({ where: { id: member.id }, data: { role: input.role } });
+    const updated = await prisma.workspaceMember.update({ where: { id: member.id }, data: { role: input.role } });
+    return {
+      result: updated,
+      event: { type: 'workspace.member_role_changed', actorId: userId, workspaceId: id, targetUserIds: [memberId], role: input.role },
+    };
   },
 
   /** Everything the workspace page shows: members, limit, counts and projects. */

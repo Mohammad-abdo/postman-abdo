@@ -10,16 +10,19 @@ export const workspaceController = {
     await workspaceService.remove(currentUserId(req), req.params.id);
     res.json({ ok: true });
   },
+  // Member mutations return `{ result, event }`; `event` is the hook point for notifications.
   addMember: async (req: Request, res: Response) => {
-    await workspaceService.addMember(currentUserId(req), req.params.id, req.body);
-    res.json({ ok: true });
+    const { result } = await workspaceService.addMember(currentUserId(req), req.params.id, req.body);
+    res.json({ ok: true, ...result });
   },
   removeMember: async (req: Request, res: Response) => {
-    await workspaceService.removeMember(currentUserId(req), req.params.id, req.params.userId);
-    res.json({ ok: true });
+    const { result } = await workspaceService.removeMember(currentUserId(req), req.params.id, req.params.userId);
+    res.json(result);
   },
-  updateMember: async (req: Request, res: Response) =>
-    res.json(await workspaceService.updateMember(currentUserId(req), req.params.id, req.params.userId, req.body)),
+  updateMember: async (req: Request, res: Response) => {
+    const { result } = await workspaceService.updateMember(currentUserId(req), req.params.id, req.params.userId, req.body);
+    res.json(result);
+  },
   overview: async (req: Request, res: Response) => res.json(await workspaceService.overview(currentUserId(req), req.params.id)),
   tree: async (req: Request, res: Response) => res.json(await workspaceService.tree(currentUserId(req), req.params.id)),
   search: async (req: Request, res: Response) =>

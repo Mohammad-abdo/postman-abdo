@@ -116,6 +116,11 @@ export const adminController = {
     audit(req, { action: 'role.create', targetType: 'role', targetId: role.id, details: req.body });
     res.json(role);
   },
+  duplicateRole: async (req: Request, res: Response) => {
+    const role = await adminStaffService.duplicateRole(req.params.id);
+    audit(req, { action: 'role.duplicate', targetType: 'role', targetId: role.id, details: { from: req.params.id } });
+    res.json(role);
+  },
   updateRole: async (req: Request, res: Response) => {
     const role = await adminStaffService.updateRole(req.params.id, req.body);
     audit(req, { action: 'role.update', targetType: 'role', targetId: role.id, details: req.body });
