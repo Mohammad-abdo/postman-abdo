@@ -15,6 +15,7 @@ import { accountRoutes } from './modules/account/account.routes';
 import { adminRoutes } from './modules/admin/admin.routes';
 import { authRoutes } from './modules/auth/auth.routes';
 import { chatRoutes } from './modules/chat/chat.routes';
+import { realtimeRoutes } from './modules/realtime/realtime.routes';
 import { activityTracker } from './modules/notifications/activity.middleware';
 import { broadcastAdminRoutes, notificationRoutes, soundAdminRoutes, soundFileRoutes } from './modules/notifications/notification.routes';
 import { codegenRoutes } from './modules/codegen/codegen.routes';
@@ -85,6 +86,7 @@ function apiRouter() {
     ['/sync', syncRoutes],
     ['/notifications', notificationRoutes],
     ['/chat', chatRoutes],
+    ['/realtime', realtimeRoutes],
   ];
   modules.forEach(([prefix, router]) => authed.use(prefix, router));
   api.use(authed);

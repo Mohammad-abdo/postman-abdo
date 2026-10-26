@@ -48,8 +48,9 @@ export function applySecurity(app: Express) {
     }),
   );
 
-  // SSE streams (collection runner) must not be buffered by compression.
-  app.use(compression({ filter: (req, res) => !req.path.endsWith('/execute/run') && compression.filter(req, res) }));
+  // SSE streams (collection runner, real-time fallback) must not be buffered by compression.
+  const isStream = (path: string) => path.endsWith('/execute/run') || path.endsWith('/realtime/stream');
+  app.use(compression({ filter: (req, res) => !isStream(req.path) && compression.filter(req, res) }));
 }
 
 /** CIDR ranges the hosted executor must never reach (cloud metadata, loopback, private LANs). */
