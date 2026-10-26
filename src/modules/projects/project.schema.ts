@@ -15,6 +15,20 @@ export const createProjectSchema = z.object({
   addAllMembers: z.boolean().default(false),
   /** Create an empty collection inside the project. */
   initialCollection: z.string().trim().max(120).optional(),
+  /**
+   * Exact variables per stage (from the guided setup). When given, they replace the default `baseUrl` variable.
+   * e.g. [{ stage: 'production', variables: [{ key: 'base_url', value: 'https://api.example.com' }] }]
+   */
+  environments: z
+    .array(
+      z.object({
+        stage: z.enum(['local', 'development', 'production']),
+        variables: z.array(z.object({ key: z.string().trim().min(1), value: z.string().default(''), type: z.enum(['default', 'secret']).default('default') })),
+      }),
+    )
+    .optional(),
+  /** Existing collections (e.g. just imported) to put in the project. */
+  collectionIds: z.array(id).default([]),
   /** Base URLs for the Local / Development / Production environments. */
   baseUrls: z
     .object({ local: z.string().optional(), development: z.string().optional(), production: z.string().optional() })

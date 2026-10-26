@@ -16,6 +16,13 @@ const STAGES = [
 
 const baseUrlVariable = (value: string) => [{ key: 'baseUrl', value, currentValue: '', type: 'default', enabled: true, description: 'Root URL of the API' }];
 
+/** Variables for one stage: the guided setup's exact list, or the default `baseUrl`. */
+function stageVariables(input: CreateProjectInput, stage: (typeof STAGES)[number]) {
+  const custom = input.environments?.find((e) => e.stage === stage.stage);
+  if (!custom) return baseUrlVariable(input.baseUrls[stage.stage] || stage.defaultUrl);
+  return custom.variables.map((v) => ({ key: v.key, value: v.value, currentValue: '', type: v.type, enabled: true, description: '' }));
+}
+
 /**
  * Project permissions, derived from the workspace role and the project role:
  * - see:    workspace admins/editors see every project; others only projects they belong to
@@ -121,9 +128,12 @@ export const projectService = {
             projectId: created.id,
             stage: s.stage,
             name: `${input.name} · ${s.name}`,
-            variables: json(baseUrlVariable(input.baseUrls[s.stage] || s.defaultUrl)),
+            variables: json(stageVariables(input, s)),
           },
         });
+      }
+      if (input.collectionIds.length) {
+        await tx.collection.updateMany({ where: { id: { in: input.collectionIds }, workspaceId: input.workspaceId }, data: { projectId: created.id } });
       }
       if (input.initialCollection) {
         const count = await tx.collection.count({ where: { workspaceId: input.workspaceId } });
