@@ -14,6 +14,7 @@ export const PERMISSIONS = {
   'staff.manage': 'Manage staff members',
   'roles.manage': 'Manage roles and permissions',
   'settings.manage': 'Change platform settings and default limits',
+  'notifications.manage': 'Manage notification sounds and send announcements',
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
