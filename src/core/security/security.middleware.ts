@@ -15,7 +15,10 @@ export function applySecurity(app: Express) {
       contentSecurityPolicy: {
         useDefaults: true,
         directives: {
-          'script-src': ["'self'", 'blob:'],
+          // Visualizer templates (pm.visualizer) run inline/CDN scripts inside a sandboxed srcdoc iframe,
+          // which inherits this policy.
+          'script-src': ["'self'", 'blob:', "'unsafe-inline'", 'https:'],
+          'upgrade-insecure-requests': env.isProduction ? [] : null,
           'worker-src': ["'self'", 'blob:'],
           'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
           'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
