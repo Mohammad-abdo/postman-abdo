@@ -129,8 +129,7 @@ function describeImport(response: any): { name?: string; id?: string; title: (ac
 
 /** Imports (pasted text, URLs, uploaded files) create collections, so the team hears about them like any creation. */
 function trackImport(req: Request, res: Response, next: NextFunction) {
-  const workspaceId = String(req.body?.workspaceId || '');
-  if (req.method !== 'POST' || !workspaceId) return next();
+  if (req.method !== 'POST') return next();
   let responseBody: any;
   const originalJson = res.json.bind(res);
   res.json = (body: unknown) => {
@@ -140,7 +139,9 @@ function trackImport(req: Request, res: Response, next: NextFunction) {
   res.on('finish', async () => {
     if (res.statusCode >= 300 || res.getHeader('Idempotent-Replay')) return;
     try {
-      const imported = describeImport(responseBody);
+      // Read at the end: multipart bodies are only parsed by the route's own middleware, after this one ran.
+      const workspaceId = String(req.body?.workspaceId || '');
+      const imported = workspaceId ? describeImport(responseBody) : null;
       if (!imported) return;
       const actorName = await userName(req.userId!);
       await notificationService.workspaceEvent(
