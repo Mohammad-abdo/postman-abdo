@@ -88,6 +88,13 @@ export async function notifyWorkspaceEvent(event: WorkspaceEvent | null) {
     if (messages.target && targetIds.length) await notificationService.notify(targetIds, { ...base, ...messages.target(context) });
     await notificationService.notify([workspace.ownerId], { ...base, ...messages.owner(context) });
 
+    // A new project is news for the whole workspace, not just the owner and the people invited to it.
+    if (event.type === 'project.created') {
+      const everyone = (await prisma.workspaceMember.findMany({ where: { workspaceId: event.workspaceId }, select: { userId: true } })).map((m) => m.userId);
+      const rest = everyone.filter((id) => id !== workspace.ownerId && !event.targetUserIds.includes(id));
+      if (rest.length) await notificationService.notify(rest, { ...base, ...messages.owner(context) });
+    }
+
     // Membership changed: affected clients reload their workspaces/projects without a page refresh.
     realtime.emit([...event.targetUserIds, workspace.ownerId, event.actorId], 'workspace.changed', {
       workspaceId: event.workspaceId,

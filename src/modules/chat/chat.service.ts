@@ -5,7 +5,7 @@ import { BadRequest, Forbidden, NotFound } from '../../core/errors/http-error';
 import { notificationService } from '../notifications/notification.service';
 import { onPresenceChange, realtime } from '../realtime/realtime.hub';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
-import { OpenConversationInput, SendMessageInput } from './chat.schema';
+import { AttachmentInput, OpenConversationInput, SendMessageInput } from './chat.schema';
 
 const PAGE_SIZE = 50;
 const userSelect = { id: true, name: true, email: true, avatarUrl: true } as const;
@@ -13,12 +13,49 @@ const userSelect = { id: true, name: true, email: true, avatarUrl: true } as con
 const messageInclude = { sender: { select: userSelect } } satisfies Prisma.MessageInclude;
 type MessageWithSender = Prisma.MessageGetPayload<{ include: typeof messageInclude }>;
 
+export interface StoredAttachment {
+  file: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: 'image' | 'video' | 'audio' | 'file';
+  voice?: boolean;
+  duration?: number;
+  width?: number;
+  height?: number;
+}
+
+const kindOf = (mimeType: string): StoredAttachment['kind'] => {
+  const type = mimeType.split('/')[0];
+  return type === 'image' || type === 'video' || type === 'audio' ? type : 'file';
+};
+
+/** What the chat shows when only attachments were sent (list previews, notifications). */
+export function describeAttachments(attachments: StoredAttachment[]) {
+  if (!attachments.length) return '';
+  const first = attachments[0];
+  const label = first.voice
+    ? '🎤 Voice message'
+    : first.kind === 'image'
+      ? '📷 Photo'
+      : first.kind === 'video'
+        ? '🎬 Video'
+        : first.kind === 'audio'
+          ? '🎵 Audio'
+          : `📎 ${first.name}`;
+  return attachments.length > 1 ? `${label} +${attachments.length - 1}` : label;
+}
+
 const messageView = (m: MessageWithSender) => ({
   id: m.id,
   conversationId: m.conversationId,
   sender: m.sender,
   body: m.deletedAt ? '' : m.body,
   mentions: (m.mentions as string[]) || [],
+  attachments: m.deletedAt
+    ? []
+    : ((m.attachments as StoredAttachment[] | null) || []).map((a) => ({ ...a, url: `/api/chat/media/${encodeURIComponent(a.file)}` })),
+  reactions: m.deletedAt ? {} : (m.reactions as Record<string, string[]> | null) || {},
   editedAt: m.editedAt,
   deleted: !!m.deletedAt,
   createdAt: m.createdAt,
@@ -86,6 +123,28 @@ function findMentions(body: string, members: { id: string; name: string; email: 
   return members
     .filter((u) => handles.some((h) => u.name.toLowerCase().replace(/\s+/g, '') === h || u.name.toLowerCase().split(/\s+/)[0] === h || u.email.split('@')[0].toLowerCase() === h))
     .map((u) => u.id);
+}
+
+/** Attachments must be files this user uploaded; name/type/size come from the upload record, never from the client. */
+async function resolveAttachments(userId: string, inputs: AttachmentInput[]): Promise<StoredAttachment[]> {
+  if (!inputs.length) return [];
+  const files = await prisma.uploadedFile.findMany({ where: { userId, storedName: { in: inputs.map((i) => i.file) } } });
+  return inputs.map((input) => {
+    const file = files.find((f) => f.storedName === input.file);
+    if (!file) throw BadRequest('Attachment not found. Please upload it again.');
+    const mimeType = file.mimeType || 'application/octet-stream';
+    const kind = kindOf(mimeType);
+    return {
+      file: file.storedName,
+      name: file.originalName,
+      mimeType,
+      size: file.size,
+      kind,
+      ...(input.voice && kind === 'audio' ? { voice: true } : {}),
+      ...(input.duration !== undefined ? { duration: input.duration } : {}),
+      ...(input.width && input.height ? { width: input.width, height: input.height } : {}),
+    };
+  });
 }
 
 export const chatService = {
@@ -194,8 +253,16 @@ export const chatService = {
     }
     const members = await prisma.conversationMember.findMany({ where: { conversationId }, include: { user: { select: userSelect } } });
     const mentions = findMentions(input.body, members.map((m) => m.user)).filter((id) => id !== userId);
+    const attachments = await resolveAttachments(userId, input.attachments);
     const message = await prisma.message.create({
-      data: { ...(input.id ? { id: input.id } : {}), conversationId, senderId: userId, body: input.body, mentions: mentions.length ? json(mentions) : undefined },
+      data: {
+        ...(input.id ? { id: input.id } : {}),
+        conversationId,
+        senderId: userId,
+        body: input.body,
+        mentions: mentions.length ? json(mentions) : undefined,
+        attachments: attachments.length ? json(attachments) : undefined,
+      },
       include: messageInclude,
     });
     await prisma.conversation.update({ where: { id: conversationId }, data: { lastMessageAt: message.createdAt } });
@@ -207,7 +274,8 @@ export const chatService = {
     // Mentions always notify; direct messages notify recipients who are not online right now (so nothing is missed).
     const sender = message.sender.name;
     const link = { kind: 'conversation' as const, id: conversationId, workspaceId: conversation.workspaceId };
-    const preview = input.body.length > 140 ? `${input.body.slice(0, 140)}…` : input.body;
+    const text = input.body || describeAttachments(attachments);
+    const preview = text.length > 140 ? `${text.slice(0, 140)}…` : text;
     if (mentions.length) {
       await notificationService.notify(mentions, {
         type: 'message.mention',
@@ -253,6 +321,33 @@ export const chatService = {
     const updated = await prisma.message.update({ where: { id: messageId }, data: { deletedAt: new Date() }, include: messageInclude });
     realtime.emit(await memberIds(message.conversationId), 'chat.message_updated', { message: messageView(updated) });
     return { ok: true };
+  },
+
+  /** Adds the emoji reaction for the user, or removes it if they already reacted with it. */
+  async react(userId: string, messageId: string, emoji: string) {
+    const message = await prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.deletedAt) throw NotFound('Message not found');
+    await assertConversationMember(userId, message.conversationId);
+    const reactions = { ...((message.reactions as Record<string, string[]> | null) || {}) };
+    const users = reactions[emoji] || [];
+    const next = users.includes(userId) ? users.filter((id) => id !== userId) : [...users, userId];
+    if (next.length) reactions[emoji] = next;
+    else delete reactions[emoji];
+    const updated = await prisma.message.update({ where: { id: messageId }, data: { reactions: json(reactions) }, include: messageInclude });
+    const view = messageView(updated);
+    realtime.emit(await memberIds(message.conversationId), 'chat.message_updated', { message: view });
+    return view;
+  },
+
+  /** Media is visible to its uploader and to members of the workspace it was uploaded in. */
+  async mediaFor(userId: string, file: string) {
+    const upload = await prisma.uploadedFile.findUnique({ where: { storedName: file } });
+    if (!upload) throw NotFound('File not found');
+    if (upload.userId !== userId) {
+      if (!upload.workspaceId) throw NotFound('File not found');
+      await assertWorkspaceMember(userId, upload.workspaceId);
+    }
+    return upload;
   },
 
   async markRead(userId: string, conversationId: string) {

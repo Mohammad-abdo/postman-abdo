@@ -51,13 +51,27 @@ export const notificationService = {
   },
 
   /**
-   * Team activity: the workspace owner hears about everything members do; `alsoNotify` adds direct recipients
-   * (e.g. the person who was invited).
+   * Team activity. By default the workspace owner hears about everything members do; `alsoNotify` adds direct
+   * recipients (e.g. the person who was invited). With `audience: 'members'` — used for new things like an imported
+   * collection or a new project — everyone who works there hears it: the project's members when the event belongs
+   * to a project, otherwise all workspace members. The actor is never notified about their own action.
    */
-  async workspaceEvent(workspaceId: string, input: Omit<NotifyInput, 'workspaceId'>, alsoNotify: string[] = []) {
+  async workspaceEvent(
+    workspaceId: string,
+    input: Omit<NotifyInput, 'workspaceId'>,
+    alsoNotify: string[] = [],
+    audience: 'owner' | 'members' = 'owner',
+  ) {
     const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true, name: true } });
     if (!workspace) return;
-    await this.notify([workspace.ownerId, ...alsoNotify], { coalesceMinutes: 15, ...input, workspaceId });
+    let recipients = [workspace.ownerId, ...alsoNotify];
+    if (audience === 'members') {
+      const scope = input.projectId
+        ? (await prisma.projectMember.findMany({ where: { projectId: input.projectId }, select: { userId: true } })).map((m) => m.userId)
+        : (await prisma.workspaceMember.findMany({ where: { workspaceId }, select: { userId: true } })).map((m) => m.userId);
+      recipients = [...recipients, ...scope];
+    }
+    await this.notify(recipients, { coalesceMinutes: 15, ...input, workspaceId });
   },
 
   /** Admin broadcast: one system notification per user, created in bulk and pushed live. */

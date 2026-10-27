@@ -437,6 +437,10 @@ model Message {
   body           String       @db.Text
   /// Users mentioned with @name
   mentions       Json?
+  /// Images, videos, voice notes and files: [{ file, name, mimeType, size, kind, voice?, duration?, width?, height? }]
+  attachments    Json?
+  /// { "👍": [userId, ...] }
+  reactions      Json?
   editedAt       DateTime?
   deletedAt      DateTime?
   createdAt      DateTime     @default(now())

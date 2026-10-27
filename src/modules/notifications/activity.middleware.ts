@@ -109,9 +109,62 @@ async function targetFromCreation(kind: Kind, body: any, response: any): Promise
 const userName = (userId: string) =>
   cache.wrap(`user-name:${userId}`, 300, async () => (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name || 'Someone');
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** What an import added, from the import endpoints' responses (single import or one entry per uploaded file). */
+function describeImport(response: any): { name?: string; id?: string; title: (actor: string) => string } | null {
+  const results: any[] = Array.isArray(response) ? response : [response];
+  const collections = results.filter((r) => r?.kind === 'collection' && r.collection);
+  const environments = results.filter((r) => r?.kind === 'environment');
+  const dumpCollections = results.reduce((n, r) => n + (r?.kind === 'dump' ? r.collections || 0 : 0), 0);
+  const total = collections.length + dumpCollections;
+  if (total === 1 && !environments.length && collections.length === 1) {
+    const { id, name } = collections[0].collection;
+    return { id, name, title: (actor) => `${actor} imported collection “${name}”` };
+  }
+  if (total) return { title: (actor) => `${actor} imported ${plural(total, 'collection')}` };
+  if (environments.length) return { title: (actor) => `${actor} imported ${plural(environments.length, 'environment')}` };
+  return null;
+}
+
+/** Imports (pasted text, URLs, uploaded files) create collections, so the team hears about them like any creation. */
+function trackImport(req: Request, res: Response, next: NextFunction) {
+  const workspaceId = String(req.body?.workspaceId || '');
+  if (req.method !== 'POST' || !workspaceId) return next();
+  let responseBody: any;
+  const originalJson = res.json.bind(res);
+  res.json = (body: unknown) => {
+    responseBody = body;
+    return originalJson(body);
+  };
+  res.on('finish', async () => {
+    if (res.statusCode >= 300 || res.getHeader('Idempotent-Replay')) return;
+    try {
+      const imported = describeImport(responseBody);
+      if (!imported) return;
+      const actorName = await userName(req.userId!);
+      await notificationService.workspaceEvent(
+        workspaceId,
+        {
+          type: 'collection.imported',
+          title: imported.title(actorName),
+          actor: { id: req.userId!, name: actorName },
+          link: imported.id ? { kind: 'collection', id: imported.id, workspaceId } : { kind: 'workspace', workspaceId },
+        },
+        [],
+        'members',
+      );
+    } catch (e) {
+      console.error('import notification failed', e);
+    }
+  });
+  next();
+}
+
 export function activityTracker(req: Request, res: Response, next: NextFunction) {
   if (req.method === 'GET' || !req.userId) return next();
   const [resource, id, action] = req.path.split('/').filter(Boolean);
+  if (resource === 'transfer' && id === 'import') return trackImport(req, res, next);
   const kind = RESOURCES[resource];
   // Member changes have their own, more specific notifications.
   if (!kind || action === 'members' || id === 'trash') return next();
@@ -134,13 +187,19 @@ export function activityTracker(req: Request, res: Response, next: NextFunction)
       if (!target) return;
       const verb = (action && ACTION_VERBS[action]) || (req.method === 'DELETE' ? 'deleted' : hasId ? 'updated' : 'created');
       const actorName = await userName(req.userId!);
-      await notificationService.workspaceEvent(target.workspaceId, {
-        type: `${kind}.${verb.replace(/\s+/g, '_')}`,
-        title: `${actorName} ${verb} ${LABELS[kind]}${target.name ? ` “${target.name}”` : ''}`,
-        projectId: target.projectId,
-        actor: { id: req.userId!, name: actorName },
-        link: verb.includes('deleted') ? { kind: 'workspace', workspaceId: target.workspaceId } : target.link,
-      });
+      await notificationService.workspaceEvent(
+        target.workspaceId,
+        {
+          type: `${kind}.${verb.replace(/\s+/g, '_')}`,
+          title: `${actorName} ${verb} ${LABELS[kind]}${target.name ? ` “${target.name}”` : ''}`,
+          projectId: target.projectId,
+          actor: { id: req.userId!, name: actorName },
+          link: verb.includes('deleted') ? { kind: 'workspace', workspaceId: target.workspaceId } : target.link,
+        },
+        [],
+        // Something new appeared: the whole team (or project) should notice, not only the workspace owner.
+        verb === 'created' ? 'members' : 'owner',
+      );
     } catch (e) {
       console.error('activity notification failed', e);
     }
