@@ -177,7 +177,7 @@ export const chatService = {
           unread,
           lastMessageAt: c.lastMessageAt,
           lastMessage: c.messages[0] ? messageView(c.messages[0]) : null,
-          members: c.members.map((m) => ({ ...m.user, online: online.has(m.userId) })),
+          members: c.members.map((m) => ({ ...m.user, online: online.has(m.userId), lastReadAt: m.lastReadAt })),
         };
       }),
     );
@@ -352,9 +352,28 @@ export const chatService = {
 
   async markRead(userId: string, conversationId: string) {
     await assertConversationMember(userId, conversationId);
-    await prisma.conversationMember.update({ where: { conversationId_userId: { conversationId, userId } }, data: { lastReadAt: new Date() } });
-    realtime.emit(userId, 'chat.read', { conversationId });
+    const readAt = new Date();
+    await prisma.conversationMember.update({ where: { conversationId_userId: { conversationId, userId } }, data: { lastReadAt: readAt } });
+    // Everyone in the conversation learns who has read up to now, so senders see their messages turn "read".
+    realtime.emit(await memberIds(conversationId), 'chat.read', { conversationId, userId, readAt });
     return { ok: true };
+  },
+
+  /** Who has read a message and when (the "Seen by" list). Only the sender sees it, like WhatsApp's message info. */
+  async readers(userId: string, messageId: string) {
+    const message = await prisma.message.findUnique({ where: { id: messageId } });
+    if (!message) throw NotFound('Message not found');
+    await assertConversationMember(userId, message.conversationId);
+    if (message.senderId !== userId) throw Forbidden('Only the sender can see who read a message');
+    const members = await prisma.conversationMember.findMany({
+      where: { conversationId: message.conversationId, userId: { not: userId } },
+      include: { user: { select: userSelect } },
+    });
+    return {
+      sentAt: message.createdAt,
+      readBy: members.filter((m) => m.lastReadAt >= message.createdAt).map((m) => ({ user: m.user, readAt: m.lastReadAt })),
+      pending: members.filter((m) => m.lastReadAt < message.createdAt).map((m) => m.user),
+    };
   },
 
   /** Online members of a workspace (for presence dots). */

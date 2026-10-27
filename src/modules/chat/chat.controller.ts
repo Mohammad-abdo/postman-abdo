@@ -24,6 +24,7 @@ export const chatController = {
   markRead: async (req: Request, res: Response) => res.json(await chatService.markRead(currentUserId(req), req.params.id)),
   edit: async (req: Request, res: Response) => res.json(await chatService.edit(currentUserId(req), req.params.id, req.body.body)),
   remove: async (req: Request, res: Response) => res.json(await chatService.remove(currentUserId(req), req.params.id)),
+  readers: async (req: Request, res: Response) => res.json(await chatService.readers(currentUserId(req), req.params.id)),
   react: async (req: Request, res: Response) => res.json(await chatService.react(currentUserId(req), req.params.id, req.body.emoji)),
   presence: async (req: Request, res: Response) => res.json(await chatService.presence(currentUserId(req), String(req.query.workspaceId || ''))),
 

@@ -17,6 +17,7 @@ chatRoutes.post('/conversations/:id/messages', validateBody(sendMessageSchema), 
 chatRoutes.post('/conversations/:id/read', chatController.markRead);
 chatRoutes.patch('/messages/:id', validateBody(editMessageSchema), chatController.edit);
 chatRoutes.delete('/messages/:id', chatController.remove);
+chatRoutes.get('/messages/:id/readers', chatController.readers);
 chatRoutes.put('/messages/:id/reactions', validateBody(reactSchema), chatController.react);
 chatRoutes.post('/upload', rateLimits.upload(), chatUpload.single('file'), chatController.upload);
 chatRoutes.get('/media/:name', chatController.media);
