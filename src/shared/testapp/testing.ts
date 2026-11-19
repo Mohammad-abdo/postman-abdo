@@ -18,7 +18,7 @@ export interface TestResult {
   /** failed is only possible on documented facts; inferred mismatches are warnings */
   certainty: 'verified' | 'inferred';
   error?: string;
-  evidence?: { request?: unknown; response?: unknown };
+  evidence?: { request?: unknown; response?: unknown; origin?: string };
 }
 
 export interface Coverage {
