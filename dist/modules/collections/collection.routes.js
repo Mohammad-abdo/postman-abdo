@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.collectionRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const collection_controller_1 = require("./collection.controller");
+const collection_schema_1 = require("./collection.schema");
+exports.collectionRoutes = (0, express_1.Router)();
+exports.collectionRoutes.post('/', (0, validate_middleware_1.validateBody)(collection_schema_1.createCollectionSchema), collection_controller_1.collectionController.create);
+exports.collectionRoutes.get('/trash/:workspaceId', collection_controller_1.collectionController.trash);
+exports.collectionRoutes.get('/:id', collection_controller_1.collectionController.get);
+exports.collectionRoutes.put('/:id', (0, validate_middleware_1.validateBody)(collection_schema_1.updateCollectionSchema), collection_controller_1.collectionController.update);
+exports.collectionRoutes.delete('/:id', collection_controller_1.collectionController.remove);
+exports.collectionRoutes.post('/:id/restore', collection_controller_1.collectionController.restore);
+exports.collectionRoutes.delete('/:id/permanent', collection_controller_1.collectionController.destroy);
+exports.collectionRoutes.put('/:id/position', (0, validate_middleware_1.validateBody)(collection_schema_1.positionSchema), collection_controller_1.collectionController.setPosition);
+exports.collectionRoutes.post('/:id/duplicate', collection_controller_1.collectionController.duplicate);
+exports.collectionRoutes.get('/:id/export', collection_controller_1.collectionController.export);

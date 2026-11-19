@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.environmentRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const environment_controller_1 = require("./environment.controller");
+const environment_schema_1 = require("./environment.schema");
+exports.environmentRoutes = (0, express_1.Router)();
+exports.environmentRoutes.get('/', environment_controller_1.environmentController.list);
+exports.environmentRoutes.post('/', (0, validate_middleware_1.validateBody)(environment_schema_1.createEnvironmentSchema), environment_controller_1.environmentController.create);
+exports.environmentRoutes.put('/:id', (0, validate_middleware_1.validateBody)(environment_schema_1.updateEnvironmentSchema), environment_controller_1.environmentController.update);
+exports.environmentRoutes.delete('/:id', environment_controller_1.environmentController.remove);
+exports.environmentRoutes.post('/:id/duplicate', environment_controller_1.environmentController.duplicate);
+exports.environmentRoutes.get('/:id/export', environment_controller_1.environmentController.export);

@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.cookieRoutes = void 0;
+const express_1 = require("express");
+const zod_1 = require("zod");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const cookie_controller_1 = require("./cookie.controller");
+const upsertSchema = zod_1.z.object({ domain: zod_1.z.string().trim().min(1), raw: zod_1.z.string().optional() });
+const removeSchema = zod_1.z.object({ domain: zod_1.z.string().min(1), name: zod_1.z.string().optional(), path: zod_1.z.string().optional() });
+exports.cookieRoutes = (0, express_1.Router)();
+exports.cookieRoutes.get('/', cookie_controller_1.cookieController.list);
+exports.cookieRoutes.post('/', (0, validate_middleware_1.validateBody)(upsertSchema), cookie_controller_1.cookieController.upsert);
+exports.cookieRoutes.post('/delete', (0, validate_middleware_1.validateBody)(removeSchema), cookie_controller_1.cookieController.remove);
+exports.cookieRoutes.delete('/', cookie_controller_1.cookieController.clear);

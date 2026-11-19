@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.folderRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const folder_controller_1 = require("./folder.controller");
+const folder_schema_1 = require("./folder.schema");
+exports.folderRoutes = (0, express_1.Router)();
+exports.folderRoutes.post('/', (0, validate_middleware_1.validateBody)(folder_schema_1.createFolderSchema), folder_controller_1.folderController.create);
+exports.folderRoutes.get('/:id', folder_controller_1.folderController.get);
+exports.folderRoutes.put('/:id', (0, validate_middleware_1.validateBody)(folder_schema_1.updateFolderSchema), folder_controller_1.folderController.update);
+exports.folderRoutes.delete('/:id', folder_controller_1.folderController.remove);
+exports.folderRoutes.post('/:id/duplicate', folder_controller_1.folderController.duplicate);
+exports.folderRoutes.post('/:id/move', (0, validate_middleware_1.validateBody)(folder_schema_1.moveFolderSchema), folder_controller_1.folderController.move);

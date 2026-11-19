@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.requestRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const request_controller_1 = require("./request.controller");
+const request_schema_1 = require("./request.schema");
+exports.requestRoutes = (0, express_1.Router)();
+exports.requestRoutes.post('/', (0, validate_middleware_1.validateBody)(request_schema_1.createRequestSchema), request_controller_1.requestController.create);
+exports.requestRoutes.get('/:id', request_controller_1.requestController.get);
+exports.requestRoutes.put('/:id', (0, validate_middleware_1.validateBody)(request_schema_1.updateRequestSchema), request_controller_1.requestController.update);
+exports.requestRoutes.delete('/:id', request_controller_1.requestController.remove);
+exports.requestRoutes.post('/:id/duplicate', request_controller_1.requestController.duplicate);
+exports.requestRoutes.post('/:id/move', (0, validate_middleware_1.validateBody)(request_schema_1.moveRequestSchema), request_controller_1.requestController.move);

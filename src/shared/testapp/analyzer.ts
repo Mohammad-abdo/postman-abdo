@@ -109,15 +109,15 @@ function bodyOf(request: Json): Endpoint['body'] & { _fields?: Param[] } {
       example = JSON.parse(b.raw || '');
       contentType = 'application/json';
     } catch {
-      contentType = undefined;
+      example = typeof b.raw === 'string' ? b.raw : undefined;
     }
   } else if (b.mode === 'formdata') {
-    asList(b.formdata).forEach((f) =>
+    asList(b.formdata).filter((f) => f?.key && !f.disabled).forEach((f) =>
       fields.push({ name: String(f.key), in: 'form', kind: f.type === 'file' ? 'file' : 'text', example: f.type === 'file' ? undefined : String(f.value ?? ''), description: f.description }),
     );
     contentType = 'multipart/form-data';
   } else if (b.mode === 'urlencoded') {
-    asList(b.urlencoded).forEach((f) => fields.push({ name: String(f.key), in: 'form', kind: 'text', example: String(f.value ?? ''), description: f.description }));
+    asList(b.urlencoded).filter((f) => f?.key && !f.disabled).forEach((f) => fields.push({ name: String(f.key), in: 'form', kind: 'text', example: String(f.value ?? ''), description: f.description }));
     contentType = 'application/x-www-form-urlencoded';
   }
   return { mode: String(b.mode), fields, example, contentType };

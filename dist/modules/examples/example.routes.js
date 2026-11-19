@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.exampleRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const example_controller_1 = require("./example.controller");
+const example_schema_1 = require("./example.schema");
+exports.exampleRoutes = (0, express_1.Router)();
+exports.exampleRoutes.post('/', (0, validate_middleware_1.validateBody)(example_schema_1.createExampleSchema), example_controller_1.exampleController.create);
+exports.exampleRoutes.get('/:id', example_controller_1.exampleController.get);
+exports.exampleRoutes.put('/:id', (0, validate_middleware_1.validateBody)(example_schema_1.updateExampleSchema), example_controller_1.exampleController.update);
+exports.exampleRoutes.delete('/:id', example_controller_1.exampleController.remove);
+exports.exampleRoutes.post('/:id/duplicate', example_controller_1.exampleController.duplicate);

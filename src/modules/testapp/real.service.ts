@@ -59,7 +59,7 @@ export async function executeReal(args: {
   userId: string;
   app: TestApp;
   endpoint: Endpoint;
-  values?: { pathParams?: Record<string, string>; query?: Record<string, string>; body?: unknown };
+  values?: { pathParams?: Record<string, string>; query?: Record<string, string>; body?: unknown; headers?: Record<string, string>; rawBody?: boolean; form?: Record<string, unknown> };
   confirmUnsafe?: boolean;
   confirmProduction?: boolean;
   context?: RealContext;
@@ -84,6 +84,28 @@ export async function executeReal(args: {
     item.request.body = { mode: 'raw', raw: JSON.stringify(built.body), options: { raw: { language: 'json' } } };
     const headers: { key: string; value: string }[] = item.request.header || (item.request.header = []);
     if (!headers.some((h) => /^content-type$/i.test(h.key))) headers.push({ key: 'Content-Type', value: 'application/json' });
+  }
+  if (args.values?.rawBody && item.request.body?.mode === 'raw') {
+    item.request.body.raw = String(args.values.body ?? '');
+  }
+  const form = args.values?.form;
+  const requestBody = item.request.body;
+  if (form && requestBody?.mode === 'urlencoded') {
+    for (const field of requestBody.urlencoded || []) {
+      if (Object.hasOwn(form, field.key)) field.value = String(form[field.key]);
+    }
+  }
+  if (form && requestBody?.mode === 'formdata') {
+    for (const field of requestBody.formdata || []) {
+      if (field.type !== 'file' && Object.hasOwn(form, field.key)) field.value = String(form[field.key]);
+    }
+  }
+  for (const [name, value] of Object.entries(args.values?.headers || {})) {
+    if (/^(host|:|connection|content-length|transfer-encoding|upgrade|proxy-)/i.test(name)) continue;
+    const headers = item.request.header || (item.request.header = []);
+    const existing = headers.find((header: { key: string }) => header.key.toLowerCase() === name.toLowerCase());
+    if (existing) existing.value = value;
+    else headers.push({ key: name, value });
   }
   if (!settings.runScripts) delete item.event;
 

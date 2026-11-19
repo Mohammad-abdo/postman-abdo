@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.codegenRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const codegen_controller_1 = require("./codegen.controller");
+const codegen_schema_1 = require("./codegen.schema");
+exports.codegenRoutes = (0, express_1.Router)();
+exports.codegenRoutes.get('/languages', codegen_controller_1.codegenController.languages);
+exports.codegenRoutes.post('/', (0, validate_middleware_1.validateBody)(codegen_schema_1.generateSnippetSchema), codegen_controller_1.codegenController.generate);

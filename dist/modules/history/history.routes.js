@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.historyRoutes = void 0;
+const express_1 = require("express");
+const zod_1 = require("zod");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const history_controller_1 = require("./history.controller");
+exports.historyRoutes = (0, express_1.Router)();
+exports.historyRoutes.get('/', history_controller_1.historyController.list);
+exports.historyRoutes.delete('/', history_controller_1.historyController.clear);
+exports.historyRoutes.post('/delete', (0, validate_middleware_1.validateBody)(zod_1.z.object({ ids: zod_1.z.array(zod_1.z.string()).min(1) })), history_controller_1.historyController.removeMany);

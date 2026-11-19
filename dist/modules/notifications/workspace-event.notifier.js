@@ -1,0 +1,104 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.notifyWorkspaceEvent = notifyWorkspaceEvent;
+exports.withNotification = withNotification;
+const prisma_1 = require("../../core/database/prisma");
+const realtime_hub_1 = require("../realtime/realtime.hub");
+const notification_service_1 = require("./notification.service");
+/** What the affected user(s) and the workspace owner read for each membership change. */
+const MESSAGES = {
+    'workspace.member_added': {
+        target: (c) => ({ type: 'workspace.member_added', title: `${c.actor} added you to “${c.workspace}”`, body: `You joined as ${c.role}.` }),
+        owner: (c) => ({ type: 'workspace.member_added', title: `${c.actor} added ${c.targets} to “${c.workspace}”` }),
+    },
+    'workspace.member_role_changed': {
+        target: (c) => ({ type: 'workspace.role_changed', title: `Your role in “${c.workspace}” is now ${c.role}`, body: `Changed by ${c.actor}.` }),
+        owner: (c) => ({ type: 'workspace.role_changed', title: `${c.actor} made ${c.targets} ${c.role} in “${c.workspace}”` }),
+    },
+    'workspace.member_removed': {
+        target: (c) => ({ type: 'workspace.member_removed', title: `${c.actor} removed you from “${c.workspace}”` }),
+        owner: (c) => ({ type: 'workspace.member_removed', title: `${c.actor} removed ${c.targets} from “${c.workspace}”` }),
+    },
+    'workspace.member_left': {
+        owner: (c) => ({ type: 'workspace.member_left', title: `${c.targets} left “${c.workspace}”` }),
+    },
+    'project.created': {
+        target: (c) => ({ type: 'project.invited', title: `${c.actor} invited you to project “${c.project}”`, body: `In workspace “${c.workspace}”.` }),
+        owner: (c) => ({ type: 'project.created', title: `${c.actor} created project “${c.project}”` }),
+    },
+    'project.deleted': {
+        target: (c) => ({ type: 'project.deleted', title: `${c.actor} deleted project “${c.project}”` }),
+        owner: (c) => ({ type: 'project.deleted', title: `${c.actor} deleted project “${c.project}”` }),
+    },
+    'project.member_added': {
+        target: (c) => ({ type: 'project.invited', title: `${c.actor} added you to project “${c.project}”`, body: `You can now work on its collections and environments.` }),
+        owner: (c) => ({ type: 'project.member_added', title: `${c.actor} added ${c.targets} to project “${c.project}”` }),
+    },
+    'project.member_role_changed': {
+        target: (c) => ({ type: 'project.role_changed', title: `Your role in project “${c.project}” is now ${c.role}` }),
+        owner: (c) => ({ type: 'project.role_changed', title: `${c.actor} made ${c.targets} ${c.role} in project “${c.project}”` }),
+    },
+    'project.member_removed': {
+        target: (c) => ({ type: 'project.member_removed', title: `${c.actor} removed you from project “${c.project}”` }),
+        owner: (c) => ({ type: 'project.member_removed', title: `${c.actor} removed ${c.targets} from project “${c.project}”` }),
+    },
+    'project.member_left': {
+        owner: (c) => ({ type: 'project.member_left', title: `${c.targets} left project “${c.project}”` }),
+    },
+};
+function describeTargets(names) {
+    if (names.length <= 2)
+        return names.join(' and ') || 'a member';
+    return `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+}
+/** Notifies everyone affected by a membership change and tells their open clients to refresh. */
+async function notifyWorkspaceEvent(event) {
+    if (!event)
+        return;
+    try {
+        const [actor, workspace, targets] = await Promise.all([
+            prisma_1.prisma.user.findUnique({ where: { id: event.actorId }, select: { name: true } }),
+            prisma_1.prisma.workspace.findUnique({ where: { id: event.workspaceId }, select: { name: true, ownerId: true } }),
+            prisma_1.prisma.user.findMany({ where: { id: { in: event.targetUserIds } }, select: { id: true, name: true } }),
+        ]);
+        if (!workspace)
+            return;
+        const context = {
+            actor: actor?.name || 'Someone',
+            workspace: workspace.name,
+            project: event.projectName || 'a project',
+            role: event.role || 'member',
+            targets: describeTargets(targets.map((t) => t.name)),
+        };
+        const messages = MESSAGES[event.type];
+        const link = event.projectId
+            ? { kind: 'project', id: event.projectId, workspaceId: event.workspaceId }
+            : { kind: 'workspace', workspaceId: event.workspaceId };
+        const base = { workspaceId: event.workspaceId, projectId: event.projectId, actor: { id: event.actorId, name: actor?.name }, link };
+        const targetIds = event.targetUserIds.filter((id) => id !== workspace.ownerId);
+        if (messages.target && targetIds.length)
+            await notification_service_1.notificationService.notify(targetIds, { ...base, ...messages.target(context) });
+        await notification_service_1.notificationService.notify([workspace.ownerId], { ...base, ...messages.owner(context) });
+        // A new project is news for the whole workspace, not just the owner and the people invited to it.
+        if (event.type === 'project.created') {
+            const everyone = (await prisma_1.prisma.workspaceMember.findMany({ where: { workspaceId: event.workspaceId }, select: { userId: true } })).map((m) => m.userId);
+            const rest = everyone.filter((id) => id !== workspace.ownerId && !event.targetUserIds.includes(id));
+            if (rest.length)
+                await notification_service_1.notificationService.notify(rest, { ...base, ...messages.owner(context) });
+        }
+        // Membership changed: affected clients reload their workspaces/projects without a page refresh.
+        realtime_hub_1.realtime.emit([...event.targetUserIds, workspace.ownerId, event.actorId], 'workspace.changed', {
+            workspaceId: event.workspaceId,
+            projectId: event.projectId,
+            type: event.type,
+        });
+    }
+    catch (e) {
+        console.error('workspace event notification failed', e);
+    }
+}
+/** Controller helper: fires the notification for a `{ result, event }` service outcome and returns the result. */
+function withNotification(outcome) {
+    void notifyWorkspaceEvent(outcome.event);
+    return outcome.result;
+}

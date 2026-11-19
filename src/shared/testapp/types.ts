@@ -154,6 +154,8 @@ export interface FieldDef {
   in: 'path' | 'query' | 'body' | 'form' | 'header';
   input: 'text' | 'number' | 'password' | 'email' | 'date' | 'checkbox' | 'select' | 'file' | 'textarea';
   options?: string[];
+  key?: string;
+  rawBody?: boolean;
   example?: string;
 }
 
@@ -180,6 +182,7 @@ export interface ActionDef {
   label: string;
   endpoint: string;
   kind: string;
+  examples?: { name: string; code: number }[];
   confirm?: string;
   inputs: FieldDef[];
   ruleId: string;
@@ -210,7 +213,7 @@ export interface TraceEntry {
 export interface AppSchema {
   schemaVersion: 1;
   app: { name: string; sourceHash: string; contractVersion: string; ruleSetVersion: string; seed: number };
-  nav: { id: string; label: string; screen: string; requiresAuth: boolean; action?: string; order?: number }[];
+  nav: { id: string; label: string; screen: string; requiresAuth: boolean; action?: string; order?: number; folderPath?: string[] }[];
   screens: Screen[];
   actions: Record<string, ActionDef>;
   endpoints: Record<string, { requestId: string; method: string; path: string; role: Role; resource: string | null }>;
@@ -227,6 +230,7 @@ export interface Override {
 }
 
 export interface GenerateOptions {
+  perRequest?: boolean;
   seed?: number;
   overrides?: Override[];
   disabledRules?: string[];

@@ -2,7 +2,7 @@ import { TestApp, TestAppSession } from '@prisma/client';
 import { json, prisma } from '../../core/database/prisma';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../core/errors/http-error';
 import { diffContracts } from '../../shared/testapp/contract';
-import { generateApp } from '../../shared/testapp/generate';
+import { generateApp, savedResponse } from '../../shared/testapp/generate';
 import { MockCtx, MockState, createInitialState, invoke } from '../../shared/testapp/mock';
 import { CustomTest, TestResult, compareRuns, coverageOf, createMockProbe, runMockTests } from '../../shared/testapp/testing';
 import { validateRule } from '../../shared/testapp/custom-rules';
@@ -52,7 +52,7 @@ const summary = (b: Bundle) => ({ stats: b.stats, warnings: b.model.warnings, re
 async function buildFromCollection(collectionId: string, overrides: Override[], seed: number, settings?: unknown) {
   const collectionJson = await collectionService.toPostman(collectionId);
   const s = (isObj(settings) ? settings : {}) as { customRules?: unknown[]; disabledRules?: string[] };
-  return { bundle: generateApp(collectionJson, { overrides, seed, sourceHash: hashOf(collectionJson), customRules: s.customRules, disabledRules: s.disabledRules }), sourceHash: hashOf(collectionJson) };
+  return { bundle: generateApp(collectionJson, { perRequest: true, overrides, seed, sourceHash: hashOf(collectionJson), customRules: s.customRules, disabledRules: s.disabledRules }), sourceHash: hashOf(collectionJson) };
 }
 
 const settingsOf = (app: TestApp) => (isObj(app.settings) ? app.settings : {}) as { customRules?: any[]; disabledRules?: string[]; customTests?: CustomTest[]; validation?: 'lenient' | 'strict'; rows?: number };
@@ -79,16 +79,23 @@ const castInput = (kind: string, v: unknown) => {
 function requestFromAction(action: ActionDef, values: Record<string, unknown>) {
   const pathParams: Record<string, string> = {};
   const query: Record<string, string> = {};
-  const body: Record<string, unknown> = {};
+  const body: Record<string, unknown> = Object.create(null);
+  const headers: Record<string, string> = Object.create(null);
+  let rawBody: unknown;
   for (const f of action.inputs) {
-    const raw = values[f.name];
-    const v = castInput(f.input, raw);
+    const raw = values[f.key ?? f.name];
+    if (f.rawBody) {
+      rawBody = raw;
+      continue;
+    }
+    const v = f.in === 'header' && typeof raw === 'string' ? raw : castInput(f.input, raw);
     if (v === undefined) continue;
     if (f.in === 'path') pathParams[f.name] = String(v);
     else if (f.in === 'query') query[f.name] = String(v);
+    else if (f.in === 'header') headers[f.name] = String(v);
     else if (f.in === 'body' || f.in === 'form') body[f.name] = v;
   }
-  return { pathParams, query, body };
+  return { pathParams, query, body, headers, rawBody };
 }
 
 export const testAppService = {
@@ -287,17 +294,24 @@ export const testAppService = {
     const action = input.actionId ? schema.actions[input.actionId] : undefined;
     if (input.actionId && !action) throw NotFound('Action not found in this version');
     const endpoint = action?.endpoint || input.endpoint;
-    const fromValues = action ? requestFromAction(action, input.values) : { pathParams: {}, query: {}, body: {} };
+    const fromValues = action ? requestFromAction(action, input.values) : { pathParams: {}, query: {}, body: {}, rawBody: undefined };
     const hasValuesBody = Object.keys(fromValues.body).length > 0;
     const req = {
       endpoint,
       pathParams: { ...fromValues.pathParams, ...(input.pathParams || {}) },
       query: { ...fromValues.query, ...(input.query || {}) },
-      body: input.body !== undefined ? input.body : hasValuesBody ? fromValues.body : undefined,
+      body: input.body !== undefined ? input.body : fromValues.rawBody !== undefined ? fromValues.rawBody : hasValuesBody ? fromValues.body : undefined,
       scenario: input.scenario,
     };
     const started = Date.now();
-    const out = invoke(ctxOf(v, app.settings), s.state as unknown as MockState, req);
+    const ctx = ctxOf(v, app.settings);
+    const source = action?.kind === 'request' && ctx.model.endpoints.find((entry) => entry.key === endpoint);
+    const savedExample = source && savedResponse(source, input.values.savedExample);
+    const state = s.state as unknown as MockState;
+    const out = source ? {
+      state,
+      result: { ...(savedExample || { status: 501, headers: {}, body: 'No saved response for this request.' }), endpoint, role: 'request', provenance: savedExample ? 'documented' : 'unknown', trace: [savedExample ? 'Replayed saved collection response' : 'No saved response'] },
+    } : invoke(ctx, state, req);
     const log = { ts: new Date().toISOString(), actionId: input.actionId, endpoint: out.result.endpoint || endpoint, role: out.result.role, request: req, status: out.result.status, scenario: input.scenario || 'success', provenance: out.result.provenance, trace: out.result.trace, durationMs: Date.now() - started };
     const logs = [...(Array.isArray(s.logs) ? (s.logs as unknown[]) : []), log].slice(-TESTAPP_LIMITS.logEntries);
     const saved = await prisma.testAppSession.updateMany({ where: { id: s.id, rev: s.rev }, data: { state: json(out.state), logs: json(logs), rev: { increment: 1 }, lastSeenAt: new Date(), expiresAt: new Date(Date.now() + TESTAPP_LIMITS.sessionTtlMs) } });
@@ -428,12 +442,15 @@ export const testAppService = {
     if (!endpoint) throw NotFound('Endpoint not found');
     const req = requestFromAction(action, input.values);
     const started = Date.now();
-    const out = await executeReal({ userId, app, endpoint, values: { pathParams: req.pathParams, query: req.query, body: Object.keys(req.body).length ? req.body : undefined }, confirmUnsafe: input.confirmUnsafe, confirmProduction: input.confirmProduction });
+    const out = await executeReal({ userId, app, endpoint, values: { pathParams: req.pathParams, query: req.query, body: req.rawBody ?? (Object.keys(req.body).length ? req.body : undefined), headers: req.headers, rawBody: req.rawBody !== undefined, form: action.kind === 'request' ? req.body : undefined }, confirmUnsafe: input.confirmUnsafe, confirmProduction: input.confirmProduction });
     if (out.kind !== 'ok') {
       if (out.kind === 'blocked') throw Forbidden(out.reason);
       throw BadRequest(out.reason);
     }
-    return { request: { endpoint: endpoint.key, url: out.url, ...req }, response: { status: out.status, headers: out.headers, body: out.body }, trace: ['sent to the REAL backend (allowlisted host)'], provenance: 'real', role: undefined, endpoint: endpoint.key, actionId: input.actionId, durationMs: Date.now() - started, loggedIn: false };
+    const response = { status: out.status, headers: out.headers, body: out.body };
+    const expected = action.kind === 'request' ? savedResponse(endpoint, input.values.savedExample) : undefined;
+    const comparison = expected ? compareResponses({ mock: expected, real: response, documentedCodes: [expected.status], contract: bundleOf(v).contract.endpoints[endpoint.key] }) : undefined;
+    return { request: { endpoint: endpoint.key, url: out.url, pathParams: req.pathParams, query: req.query, body: req.rawBody ?? req.body }, response, comparison, trace: ['sent to the REAL backend (allowlisted host)'], provenance: 'real', role: undefined, endpoint: endpoint.key, actionId: input.actionId, durationMs: Date.now() - started, loggedIn: false };
   },
 
   async runs(userId: string, id: string) {

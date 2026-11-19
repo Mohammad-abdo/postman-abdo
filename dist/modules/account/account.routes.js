@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.accountRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const account_controller_1 = require("./account.controller");
+const account_schema_1 = require("./account.schema");
+exports.accountRoutes = (0, express_1.Router)();
+exports.accountRoutes.get('/', account_controller_1.accountController.overview);
+exports.accountRoutes.put('/profile', (0, validate_middleware_1.validateBody)(account_schema_1.updateProfileSchema), account_controller_1.accountController.updateProfile);
+exports.accountRoutes.post('/avatar', (0, validate_middleware_1.validateBody)(account_schema_1.avatarSchema), account_controller_1.accountController.setAvatar);
+exports.accountRoutes.put('/password', (0, validate_middleware_1.validateBody)(account_schema_1.changePasswordSchema), account_controller_1.accountController.changePassword);
+exports.accountRoutes.post('/logout-all', account_controller_1.accountController.logoutEverywhere);
+exports.accountRoutes.get('/activity', account_controller_1.accountController.activity);
+exports.accountRoutes.put('/preferences', (0, validate_middleware_1.validateBody)(account_schema_1.preferencesSchema), account_controller_1.accountController.updatePreferences);

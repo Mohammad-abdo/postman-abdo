@@ -1,0 +1,61 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.testAppRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const testapp_controller_1 = require("./testapp.controller");
+const share_service_1 = require("./share.service");
+const ai_service_1 = require("./ai.service");
+const zod_1 = require("zod");
+const audit_service_1 = require("../../core/audit/audit.service");
+const auth_middleware_1 = require("../../core/middleware/auth.middleware");
+const testapp_schema_1 = require("./testapp.schema");
+/** Collection-to-Test-App generator (authenticated). Mounted at /api/testapps. */
+exports.testAppRoutes = (0, express_1.Router)();
+exports.testAppRoutes.post('/analyze', (0, validate_middleware_1.validateBody)(testapp_schema_1.analyzeSchema), testapp_controller_1.testAppController.analyze);
+exports.testAppRoutes.get('/', testapp_controller_1.testAppController.list);
+exports.testAppRoutes.post('/', (0, validate_middleware_1.validateBody)(testapp_schema_1.createTestAppSchema), testapp_controller_1.testAppController.create);
+exports.testAppRoutes.get('/:id', testapp_controller_1.testAppController.get);
+exports.testAppRoutes.patch('/:id', (0, validate_middleware_1.validateBody)(testapp_schema_1.updateTestAppSchema), testapp_controller_1.testAppController.update);
+exports.testAppRoutes.delete('/:id', testapp_controller_1.testAppController.remove);
+exports.testAppRoutes.get('/:id/versions', testapp_controller_1.testAppController.versions);
+exports.testAppRoutes.get('/:id/versions/:v', testapp_controller_1.testAppController.versionPart);
+exports.testAppRoutes.post('/:id/regenerate', (0, validate_middleware_1.validateBody)(testapp_schema_1.regenerateSchema), testapp_controller_1.testAppController.regenerate);
+exports.testAppRoutes.put('/:id/overrides/:target', (0, validate_middleware_1.validateBody)(testapp_schema_1.overrideSchema), testapp_controller_1.testAppController.setOverride);
+exports.testAppRoutes.delete('/:id/overrides/:target', testapp_controller_1.testAppController.removeOverride);
+exports.testAppRoutes.post('/:id/sessions', (0, validate_middleware_1.validateBody)(testapp_schema_1.createSessionSchema), testapp_controller_1.testAppController.createSession);
+exports.testAppRoutes.post('/:id/sessions/:sid/invoke', (0, validate_middleware_1.validateBody)(testapp_schema_1.invokeSchema), testapp_controller_1.testAppController.invoke);
+exports.testAppRoutes.post('/:id/sessions/:sid/reset', (0, validate_middleware_1.validateBody)(testapp_schema_1.resetSchema), testapp_controller_1.testAppController.reset);
+exports.testAppRoutes.get('/:id/sessions/:sid/logs', testapp_controller_1.testAppController.logs);
+exports.testAppRoutes.get('/:id/sessions/:sid/state', testapp_controller_1.testAppController.state);
+exports.testAppRoutes.post('/:id/runs', (0, validate_middleware_1.validateBody)(testapp_schema_1.runSchema), testapp_controller_1.testAppController.run);
+exports.testAppRoutes.post('/:id/real/invoke', (0, validate_middleware_1.validateBody)(testapp_schema_1.realInvokeSchema), testapp_controller_1.testAppController.realInvoke);
+exports.testAppRoutes.get('/:id/rules', testapp_controller_1.testAppController.rules);
+exports.testAppRoutes.put('/:id/rules', (0, validate_middleware_1.validateBody)(testapp_schema_1.rulesSchema), testapp_controller_1.testAppController.saveRules);
+exports.testAppRoutes.post('/:id/rules/preview', (0, validate_middleware_1.validateBody)(testapp_schema_1.rulesSchema), testapp_controller_1.testAppController.previewRules);
+exports.testAppRoutes.get('/:id/runs', testapp_controller_1.testAppController.runs);
+exports.testAppRoutes.get('/:id/runs/:rid', testapp_controller_1.testAppController.getRun);
+exports.testAppRoutes.get('/:id/runs/:rid/export', testapp_controller_1.testAppController.exportRun);
+exports.testAppRoutes.get('/:id/coverage', testapp_controller_1.testAppController.coverage);
+exports.testAppRoutes.get('/:id/shares', async (req, res) => res.json(await share_service_1.shareService.list((0, auth_middleware_1.currentUserId)(req), String(req.params.id))));
+exports.testAppRoutes.post('/:id/shares', (0, validate_middleware_1.validateBody)(share_service_1.createShareSchema), async (req, res) => {
+    const out = await share_service_1.shareService.create((0, auth_middleware_1.currentUserId)(req), String(req.params.id), req.body);
+    (0, audit_service_1.audit)(req, { action: 'testapp.share.create', targetType: 'testapp', targetId: String(req.params.id), details: { shareId: out.share.id, password: out.share.hasPassword, expiresAt: out.share.expiresAt } });
+    res.json(out);
+});
+exports.testAppRoutes.delete('/:id/shares/:shareId', async (req, res) => {
+    await share_service_1.shareService.revoke((0, auth_middleware_1.currentUserId)(req), String(req.params.id), String(req.params.shareId));
+    (0, audit_service_1.audit)(req, { action: 'testapp.share.revoke', targetType: 'testapp', targetId: String(req.params.id), details: { shareId: String(req.params.shareId) } });
+    res.json({ ok: true });
+});
+exports.testAppRoutes.get('/:id/ai/status', async (req, res) => res.json(await ai_service_1.aiService.status((0, auth_middleware_1.currentUserId)(req), String(req.params.id))));
+exports.testAppRoutes.post('/:id/ai/suggest', async (req, res) => {
+    const out = await ai_service_1.aiService.suggestTests((0, auth_middleware_1.currentUserId)(req), String(req.params.id));
+    (0, audit_service_1.audit)(req, { action: 'testapp.ai.suggest', targetType: 'testapp', targetId: String(req.params.id), details: { tokens: out.tokens, accepted: out.accepted.length, rejected: out.rejected.length } });
+    res.json(out);
+});
+exports.testAppRoutes.post('/:id/ai/explain', (0, validate_middleware_1.validateBody)(zod_1.z.object({ runId: zod_1.z.string().min(1).max(64), testId: zod_1.z.string().min(1).max(20) })), async (req, res) => {
+    const out = await ai_service_1.aiService.explain((0, auth_middleware_1.currentUserId)(req), String(req.params.id), req.body.runId, req.body.testId);
+    (0, audit_service_1.audit)(req, { action: 'testapp.ai.explain', targetType: 'testapp', targetId: String(req.params.id), details: { tokens: out.tokens } });
+    res.json(out);
+});

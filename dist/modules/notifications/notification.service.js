@@ -1,0 +1,125 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.notificationService = void 0;
+const prisma_1 = require("../../core/database/prisma");
+const http_error_1 = require("../../core/errors/http-error");
+const realtime_hub_1 = require("../realtime/realtime.hub");
+const notification_types_1 = require("./notification.types");
+const PAGE_SIZE = 30;
+const view = (n) => ({ ...n, category: (0, notification_types_1.categoryOf)(n.type) });
+async function unreadCount(userId) {
+    return prisma_1.prisma.notification.count({ where: { userId, readAt: null } });
+}
+async function pushTo(userId, notification) {
+    realtime_hub_1.realtime.emit(userId, 'notification.new', { notification: view(notification), unread: await unreadCount(userId) });
+}
+exports.notificationService = {
+    /** Creates (or coalesces) one notification per recipient and pushes it instantly over the socket. */
+    async notify(recipientIds, input) {
+        const recipients = [...new Set(recipientIds)].filter((id) => id && id !== input.actor?.id);
+        for (const userId of recipients) {
+            const since = new Date(Date.now() - (input.coalesceMinutes ?? 0) * 60_000);
+            const linkId = input.link?.id ?? null;
+            const existing = input.coalesceMinutes
+                ? await prisma_1.prisma.notification.findFirst({
+                    where: { userId, type: input.type, actorId: input.actor?.id ?? null, readAt: null, updatedAt: { gte: since } },
+                    orderBy: { updatedAt: 'desc' },
+                })
+                : null;
+            const sameTarget = existing && (existing.link?.id ?? null) === linkId;
+            const notification = sameTarget
+                ? await prisma_1.prisma.notification.update({ where: { id: existing.id }, data: { count: { increment: 1 }, title: input.title, body: input.body } })
+                : await prisma_1.prisma.notification.create({
+                    data: {
+                        userId,
+                        type: input.type,
+                        title: input.title,
+                        body: input.body,
+                        workspaceId: input.workspaceId ?? null,
+                        projectId: input.projectId ?? null,
+                        actorId: input.actor?.id ?? null,
+                        actorName: input.actor?.name ?? null,
+                        link: input.link ? (0, prisma_1.json)(input.link) : undefined,
+                    },
+                });
+            await pushTo(userId, notification);
+        }
+    },
+    /**
+     * Team activity. By default the workspace owner hears about everything members do; `alsoNotify` adds direct
+     * recipients (e.g. the person who was invited). With `audience: 'members'` — used for new things like an imported
+     * collection or a new project — everyone who works there hears it: the project's members when the event belongs
+     * to a project, otherwise all workspace members. The actor is never notified about their own action.
+     */
+    async workspaceEvent(workspaceId, input, alsoNotify = [], audience = 'owner') {
+        const workspace = await prisma_1.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true, name: true } });
+        if (!workspace)
+            return;
+        let recipients = [workspace.ownerId, ...alsoNotify];
+        if (audience === 'members') {
+            const scope = input.projectId
+                ? (await prisma_1.prisma.projectMember.findMany({ where: { projectId: input.projectId }, select: { userId: true } })).map((m) => m.userId)
+                : (await prisma_1.prisma.workspaceMember.findMany({ where: { workspaceId }, select: { userId: true } })).map((m) => m.userId);
+            recipients = [...recipients, ...scope];
+        }
+        await this.notify(recipients, { coalesceMinutes: 15, ...input, workspaceId });
+    },
+    /** Admin broadcast: one system notification per user, created in bulk and pushed live. */
+    async broadcast(input) {
+        const recipients = input.workspaceId
+            ? (await prisma_1.prisma.workspaceMember.findMany({ where: { workspaceId: input.workspaceId }, select: { userId: true } })).map((m) => m.userId)
+            : (await prisma_1.prisma.user.findMany({ where: { status: 'active' }, select: { id: true } })).map((u) => u.id);
+        const BATCH = 500;
+        for (let i = 0; i < recipients.length; i += BATCH) {
+            const batch = recipients.slice(i, i + BATCH);
+            await prisma_1.prisma.notification.createMany({
+                data: batch.map((userId) => ({
+                    userId,
+                    type: 'system.broadcast',
+                    title: input.title,
+                    body: input.body,
+                    workspaceId: input.workspaceId ?? null,
+                    actorId: input.actor.id,
+                    actorName: input.actor.name ?? null,
+                })),
+            });
+            const created = await prisma_1.prisma.notification.findMany({
+                where: { userId: { in: batch }, type: 'system.broadcast', title: input.title, readAt: null },
+                orderBy: { createdAt: 'desc' },
+                distinct: ['userId'],
+            });
+            for (const n of created)
+                await pushTo(n.userId, n);
+        }
+        return { sent: recipients.length };
+    },
+    async list(userId, { cursor, unreadOnly }) {
+        const items = await prisma_1.prisma.notification.findMany({
+            where: { userId, ...(unreadOnly ? { readAt: null } : {}), ...(cursor ? { updatedAt: { lt: new Date(cursor) } } : {}) },
+            orderBy: { updatedAt: 'desc' },
+            take: PAGE_SIZE,
+        });
+        return {
+            items: items.map(view),
+            unread: await unreadCount(userId),
+            nextCursor: items.length === PAGE_SIZE ? items[items.length - 1].updatedAt.toISOString() : null,
+        };
+    },
+    unreadCount,
+    async markRead(userId, ids) {
+        await prisma_1.prisma.notification.updateMany({ where: { userId, readAt: null, ...(ids?.length ? { id: { in: ids } } : {}) }, data: { readAt: new Date() } });
+        const unread = await unreadCount(userId);
+        realtime_hub_1.realtime.emit(userId, 'notification.read', { ids: ids || 'all', unread });
+        return { unread };
+    },
+    async remove(userId, id) {
+        const deleted = await prisma_1.prisma.notification.deleteMany({ where: { id, userId } });
+        if (!deleted.count)
+            throw (0, http_error_1.NotFound)('Notification not found');
+        return { unread: await unreadCount(userId) };
+    },
+    async clear(userId) {
+        await prisma_1.prisma.notification.deleteMany({ where: { userId } });
+        return { unread: 0 };
+    },
+};

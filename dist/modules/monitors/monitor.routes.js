@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.monitorRoutes = void 0;
+const express_1 = require("express");
+const validate_middleware_1 = require("../../core/middleware/validate.middleware");
+const monitor_controller_1 = require("./monitor.controller");
+const monitor_schema_1 = require("./monitor.schema");
+exports.monitorRoutes = (0, express_1.Router)();
+exports.monitorRoutes.get('/', monitor_controller_1.monitorController.list);
+exports.monitorRoutes.post('/', (0, validate_middleware_1.validateBody)(monitor_schema_1.createMonitorSchema), monitor_controller_1.monitorController.create);
+exports.monitorRoutes.put('/:id', (0, validate_middleware_1.validateBody)(monitor_schema_1.updateMonitorSchema), monitor_controller_1.monitorController.update);
+exports.monitorRoutes.delete('/:id', monitor_controller_1.monitorController.remove);
+exports.monitorRoutes.post('/:id/run', monitor_controller_1.monitorController.runNow);
+exports.monitorRoutes.get('/:id/runs', monitor_controller_1.monitorController.runs);
+exports.monitorRoutes.get('/:id/runs/:runId', monitor_controller_1.monitorController.run);
