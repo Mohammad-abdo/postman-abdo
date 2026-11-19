@@ -11,3 +11,4 @@ monitorRoutes.put('/:id', validateBody(updateMonitorSchema), monitorController.u
 monitorRoutes.delete('/:id', monitorController.remove);
 monitorRoutes.post('/:id/run', monitorController.runNow);
 monitorRoutes.get('/:id/runs', monitorController.runs);
+monitorRoutes.get('/:id/runs/:runId', monitorController.run);

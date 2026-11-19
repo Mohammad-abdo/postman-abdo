@@ -37,7 +37,7 @@ async function execute(monitorId: string) {
       monitorId,
       source: 'monitor',
       name: monitor.name,
-      stats: json({ ...result.stats, error: result.error }),
+      stats: json({ ...result.stats, error: result.error, requestErrors: result.executions.filter((e) => e.error).length }),
       results: json(result.executions.map((e) => ({ ...stripBody(e), visualizer: null }))),
     },
   });
@@ -84,6 +84,20 @@ export const monitorService = {
 
   async runs(userId: string, id: string) {
     await assertMonitorAccess(userId, id);
-    return prisma.collectionRun.findMany({ where: { monitorId: id }, orderBy: { createdAt: 'desc' }, take: 100 });
+    // Light rows only: the per-request `results` JSON of 100 runs is huge and made this endpoint fail.
+    return prisma.collectionRun.findMany({
+      where: { monitorId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: { id: true, workspaceId: true, collectionId: true, monitorId: true, source: true, name: true, stats: true, createdAt: true },
+    });
+  },
+
+  /** Full results of one run (loaded when the user selects it). */
+  async run(userId: string, id: string, runId: string) {
+    await assertMonitorAccess(userId, id);
+    const run = await prisma.collectionRun.findFirst({ where: { id: runId, monitorId: id } });
+    if (!run) throw NotFound('Run not found');
+    return run;
   },
 };

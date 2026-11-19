@@ -11,5 +11,6 @@ export const monitorController = {
     res.json({ ok: true });
   },
   runNow: async (req: Request, res: Response) => res.json(await monitorService.runNow(currentUserId(req), req.params.id)),
+  run: async (req: Request, res: Response) => res.json(await monitorService.run(currentUserId(req), req.params.id, req.params.runId)),
   runs: async (req: Request, res: Response) => res.json(await monitorService.runs(currentUserId(req), req.params.id)),
 };

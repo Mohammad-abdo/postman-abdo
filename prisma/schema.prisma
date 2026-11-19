@@ -359,6 +359,8 @@ model CollectionRun {
   createdAt    DateTime   @default(now())
   workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, createdAt])
 }
 
 /// In-app notification for one recipient. Repeated identical events are coalesced into `count`.
