@@ -59,7 +59,7 @@ export const rateLimits = {
   testApp: () => middleware(createLimiter({ name: 'testapp', points: 240, durationSeconds: 60 }), byUserOrIp, 'Too many test app requests. Wait a moment and try again.'),
   /** Public shared test apps: per IP and per link. */
   testAppPublic: () =>
-    middleware(createLimiter({ name: 'testapp-public', points: 120, durationSeconds: 60 }), (req) => , 'Too many requests to this shared app. Slow down.'),
+    middleware(createLimiter({ name: 'testapp-public', points: 120, durationSeconds: 60 }), (req) => `${req.ip || 'unknown'}:${req.path.split('/')[1] || ''}`, 'Too many requests to this shared app. Slow down.'),
   /** File uploads and imports, per user. */
   upload: () => middleware(createLimiter({ name: 'upload', points: 30, durationSeconds: 60 }), byUserOrIp, 'Too many uploads. Try again later.'),
 };

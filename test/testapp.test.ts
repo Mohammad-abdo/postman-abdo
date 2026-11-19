@@ -4,6 +4,7 @@ import { analyzeCollection } from '../src/shared/testapp/analyzer';
 import { diffContracts, inferSchema, mergeSchemas, validateAgainst } from '../src/shared/testapp/contract';
 import { generateApp } from '../src/shared/testapp/generate';
 import { MockCtx, createInitialState, invoke } from '../src/shared/testapp/mock';
+import { publicSchema } from '../src/shared/testapp/public';
 import { runMockTests } from '../src/shared/testapp/testing';
 import { stableStringify } from '../src/shared/testapp/util';
 import { item, shopCollection } from './fixtures/shop';
@@ -276,5 +277,17 @@ describe('generated tests', () => {
     broken.schema.actions['act.users.list'].endpoint = 'GET /ghost';
     const r = runMockTests(broken);
     assert.ok(r.results.some((x) => x.type === 'mapping' && x.status === 'failed' && x.action === 'act.users.list'));
+  });
+});
+
+describe('public share projection', () => {
+  it('leaks no hashes, request ids, traces, dispositions or sources', () => {
+    const b = bundle();
+    const pub = JSON.stringify(publicSchema(b.schema));
+    assert.ok(!pub.includes(b.schema.app.sourceHash));
+    assert.ok(!pub.includes(b.schema.app.contractVersion));
+    for (const e of Object.values(b.schema.endpoints)) assert.ok(!pub.includes(e.requestId));
+    for (const k of ['"trace"', '"dispositions"', '"conflicts"', '"review"', '"requestId"']) assert.ok(!pub.includes(k), k);
+    assert.ok(publicSchema(b.schema).screens.every((s) => s.sources.length === 0));
   });
 });

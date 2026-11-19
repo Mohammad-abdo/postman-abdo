@@ -5,6 +5,7 @@ import { TestApp, TestAppShare } from '@prisma/client';
 import { env } from '../../config/env';
 import { prisma } from '../../core/database/prisma';
 import { Forbidden, HttpError, NotFound, Unauthorized } from '../../core/errors/http-error';
+import { publicSchema } from '../../shared/testapp/public';
 import { AppSchema } from '../../shared/testapp/types';
 import { sha256 } from '../../shared/testapp/util';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
@@ -35,18 +36,6 @@ async function managed(userId: string, appId: string): Promise<TestApp> {
   const member = await assertWorkspaceMember(userId, app.workspaceId);
   if (member.role === 'viewer') throw Forbidden('Viewers cannot manage share links');
   return app;
-}
-
-/** What a public visitor may see: no source ids, hashes, rule traces, conflicts or review queue. */
-export function publicSchema(schema: AppSchema) {
-  return {
-    schemaVersion: schema.schemaVersion,
-    app: { name: schema.app.name, seed: schema.app.seed },
-    nav: schema.nav,
-    screens: schema.screens.map(({ sources: _s, ...s }) => ({ ...s, sources: [] })),
-    actions: Object.fromEntries(Object.entries(schema.actions).map(([k, a]) => [k, { id: a.id, label: a.label, kind: a.kind, confirm: a.confirm, inputs: a.inputs, endpoint: a.endpoint, ruleId: a.ruleId }])),
-    workflows: schema.workflows,
-  };
 }
 
 export const shareService = {
