@@ -9,7 +9,7 @@
     "start": "node dist/server.js",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
-    "test": "tsx --test test/testapp.test.ts"
+    "test": "tsx --test \"test/**/*.test.ts\""
   },
   "keywords": [],
   "author": "",

@@ -230,6 +230,8 @@ export interface GenerateOptions {
   seed?: number;
   overrides?: Override[];
   disabledRules?: string[];
+  /** Custom JSON rules (see custom-rules.ts). Invalid ones are reported, never executed. */
+  customRules?: unknown[];
 }
 
 export interface Bundle {
@@ -237,6 +239,7 @@ export interface Bundle {
   contract: Contract;
   graph: RelationshipGraph;
   schema: AppSchema;
+  customRules: { matches: { ruleId: string; name: string; endpoints: string[] }[]; invalid: { ruleId: string; errors: string[] }[] };
   stats: {
     endpoints: number;
     mapped: number;

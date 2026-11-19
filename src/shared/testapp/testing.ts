@@ -1,12 +1,13 @@
 import { validateAgainst } from './contract';
-import { MockCtx, MockRequest, MockState, createInitialState, invoke } from './mock';
+import { MockCtx, MockRequest, MockState, Scenario, createInitialState, invoke } from './mock';
+import { findList } from './ui-helpers';
 import { Bundle, Endpoint } from './types';
-import { clone, isObj } from './util';
+import { clone, getPath, isObj } from './util';
 
 export interface TestResult {
   id: string;
   name: string;
-  type: 'contract' | 'mapping' | 'auth' | 'state';
+  type: 'contract' | 'mapping' | 'auth' | 'state' | 'workflow' | 'negative' | 'custom';
   endpoint?: string;
   screen?: string;
   action?: string;
@@ -37,7 +38,20 @@ const trunc = (v: unknown) => {
   return s && s.length > 2000 ? s.slice(0, 2000) + '…' : v;
 };
 
-export function runMockTests(bundle: Bundle, opts: { seed?: number } = {}) {
+/** A test saved by a user (or an accepted AI suggestion). Runs against the mock only. */
+export interface CustomTest {
+  name: string;
+  endpoint: string;
+  pathParams?: Record<string, string>;
+  query?: Record<string, string>;
+  body?: unknown;
+  scenario?: Scenario;
+  noAuth?: boolean;
+  expectStatus: number;
+  expectBodyKeys?: string[];
+}
+
+export function runMockTests(bundle: Bundle, opts: { seed?: number; customTests?: CustomTest[] } = {}) {
   const ctx: MockCtx = { model: bundle.model, contract: bundle.contract, graph: bundle.graph };
   const results: TestResult[] = [];
   let state: MockState = createInitialState(ctx, opts.seed ?? bundle.schema.app.seed);
@@ -161,6 +175,73 @@ export function runMockTests(bundle: Bundle, opts: { seed?: number } = {}) {
     }
   }
 
+  /* ---- workflow tests ---- */
+  doLogin();
+  for (const wf of bundle.schema.workflows) {
+    const failures: string[] = [];
+    const trail: unknown[] = [];
+    for (const step of wf.steps) {
+      const action = bundle.schema.actions[step];
+      const e = action && byKey.get(action.endpoint);
+      if (!e) {
+        failures.push(`${step}: action or endpoint missing`);
+        continue;
+      }
+      const res = call(requestFor(e));
+      trail.push({ step, status: res.status });
+      if (res.status >= 400) failures.push(`${step} → ${res.status}`);
+    }
+    add({ name: `Workflow: ${wf.name}`, type: 'workflow', status: failures.length ? 'failed' : 'passed', expected: 'every step succeeds in order', actual: failures.length ? failures.join('; ') : `${wf.steps.length} steps ok`, certainty: 'inferred', evidence: { request: wf.steps, response: trail } });
+    doLogin();
+  }
+
+  /* ---- negative tests ---- */
+  const WITH_ID = new Set(['get', 'update', 'patch', 'delete', 'nested-get', 'nested-update', 'nested-delete']);
+  for (const e of live) {
+    const role = bundle.graph.roles[e.key].role;
+    const actionId = Object.values(bundle.schema.actions).find((a) => a.endpoint === e.key)?.id;
+    if (login && e.auth.type !== 'noauth' && role !== 'auth.login' && bundle.schema.dispositions[e.key]?.state !== 'explorer') {
+      const res = call({ ...requestFor(e), token: '' });
+      add({ name: `${e.key} rejects calls without a token`, type: 'negative', endpoint: e.key, action: actionId, status: res.status === 401 || res.status === 403 ? 'passed' : 'failed', expected: '401/403', actual: String(res.status), certainty: 'inferred' });
+    }
+    if (WITH_ID.has(role) && e.pathParams.length) {
+      const req = requestFor(e);
+      req.pathParams = { ...req.pathParams, [e.pathParams[e.pathParams.length - 1].name]: '__missing__' };
+      const res = call(req);
+      const documented = e.examples.some((x) => x.code === 404);
+      add({ name: `${e.key} returns not found for an unknown id`, type: 'negative', endpoint: e.key, action: actionId, status: res.status === 404 ? 'passed' : 'failed', expected: '404', actual: String(res.status), certainty: documented ? 'verified' : 'inferred' });
+    }
+    for (const ex of e.examples.filter((x) => x.code >= 400)) {
+      const scenario: Scenario | null = ex.code === 401 || ex.code === 403 ? 'unauthorized' : ex.code === 404 ? 'notFound' : ex.code >= 500 ? 'serverError' : ex.code === 400 || ex.code === 422 ? 'validation' : null;
+      if (!scenario) continue;
+      const res = call({ ...requestFor(e), scenario });
+      const same = res.status === ex.code && (ex.body === undefined || JSON.stringify(res.body) === JSON.stringify(ex.body));
+      add({ name: `${e.key} replays documented ${ex.code} "${ex.name}"`, type: 'negative', endpoint: e.key, action: actionId, status: same ? 'passed' : 'failed', expected: `status ${ex.code} and the saved body`, actual: `status ${res.status}`, certainty: 'verified', evidence: same ? undefined : { response: trunc(res.body) } });
+    }
+    if (role === 'list' || role === 'nested-list') {
+      const res = call({ ...requestFor(e), scenario: 'empty' });
+      const list = findList(res.body);
+      const arr = list && (list.path === '$' ? res.body : getPath(res.body, list.path));
+      add({ name: `${e.key} supports an empty result`, type: 'negative', endpoint: e.key, action: actionId, status: Array.isArray(arr) && arr.length === 0 ? 'passed' : 'warning', expected: 'empty list', actual: Array.isArray(arr) ? `${arr.length} items` : 'no list found in the response', certainty: 'inferred' });
+    }
+  }
+  doLogin();
+
+  /* ---- user-defined / accepted tests ---- */
+  for (const t of opts.customTests || []) {
+    const e = byKey.get(t.endpoint);
+    if (!e) {
+      add({ name: t.name, type: 'custom', endpoint: t.endpoint, status: 'failed', expected: `endpoint ${t.endpoint}`, actual: 'not in the contract', certainty: 'verified', error: 'The test references an endpoint that no longer exists.' });
+      continue;
+    }
+    const base = requestFor(e);
+    const res = call({ ...base, pathParams: { ...base.pathParams, ...(t.pathParams || {}) }, query: { ...base.query, ...(t.query || {}) }, body: t.body !== undefined ? t.body : base.body, scenario: t.scenario, ...(t.noAuth ? { token: '' } : {}) });
+    const problems: string[] = [];
+    if (res.status !== t.expectStatus) problems.push(`status ${res.status}, expected ${t.expectStatus}`);
+    for (const k of t.expectBodyKeys || []) if (getPath(res.body, `$.${k}`) === undefined) problems.push(`missing ${k}`);
+    add({ name: t.name, type: 'custom', endpoint: e.key, status: problems.length ? 'failed' : 'passed', expected: `status ${t.expectStatus}${t.expectBodyKeys?.length ? ` with ${t.expectBodyKeys.join(', ')}` : ''}`, actual: problems.length ? problems.join('; ') : `status ${res.status}`, certainty: 'verified', evidence: { request: trunc(t), response: trunc(res.body) } });
+  }
+
   const stats = {
     total: results.length,
     passed: results.filter((r) => r.status === 'passed').length,
@@ -188,4 +269,65 @@ export function coverageOf(bundle: Bundle, results: TestResult[] = []): Coverage
     if (!['excluded', 'background'].includes(k) && !results.some((r) => r.type === 'contract' && r.endpoint === e.key && r.status !== 'skipped')) c.untested.push(e.key);
   });
   return c;
+}
+
+/** Calls the mock for one endpoint exactly like the generated tests do (logged in, realistic ids). Used by mock-vs-real comparison. */
+export function createMockProbe(bundle: Bundle, seed = bundle.schema.app.seed) {
+  const ctx: MockCtx = { model: bundle.model, contract: bundle.contract, graph: bundle.graph };
+  let state: MockState = createInitialState(ctx, seed);
+  const byKey = new Map(bundle.model.endpoints.map((e) => [e.key, e]));
+  if (bundle.graph.authLogin) {
+    const login = byKey.get(bundle.graph.authLogin) as Endpoint;
+    state = invoke(ctx, state, { endpoint: login.key, body: login.body.example }).state;
+  }
+  return (key: string) => {
+    const e = byKey.get(key) as Endpoint;
+    const info = bundle.graph.roles[key];
+    const pathParams: Record<string, string> = {};
+    const parentRes = bundle.graph.resources.find((r) => r.id === info.resource)?.parent;
+    e.pathParams.forEach((p, i) => {
+      const last = i === e.pathParams.length - 1;
+      const res = info.role.startsWith('nested') && !last ? parentRes : info.resource;
+      const row = res ? state.tables[res]?.[0] : undefined;
+      const idf = res ? state.idFields[res] : undefined;
+      pathParams[p.name] = String(row && idf ? row[idf] : p.example || '1');
+    });
+    const query: Record<string, string> = {};
+    e.query.forEach((q) => q.example !== undefined && (query[q.name] = q.example));
+    const out = invoke(ctx, state, { endpoint: key, pathParams, query, body: clone(e.body.example) });
+    state = out.state;
+    return out.result;
+  };
+}
+
+export interface RegressionReport {
+  newFailures: string[];
+  fixed: string[];
+  added: string[];
+  removed: string[];
+  statusChanges: { test: string; from: string; to: string }[];
+}
+
+/** Compares two runs by test identity (type + name). Detects behaviour changes between versions. */
+export function compareRuns(prev: TestResult[], next: TestResult[]): RegressionReport {
+  const key = (r: TestResult) => `${r.type}|${r.name}`;
+  const p = new Map(prev.map((r) => [key(r), r]));
+  const n = new Map(next.map((r) => [key(r), r]));
+  const out: RegressionReport = { newFailures: [], fixed: [], added: [], removed: [], statusChanges: [] };
+  n.forEach((r, k) => {
+    const old = p.get(k);
+    if (!old) {
+      out.added.push(r.name);
+      return;
+    }
+    if (old.status !== r.status) {
+      out.statusChanges.push({ test: r.name, from: old.status, to: r.status });
+      if (r.status === 'failed') out.newFailures.push(r.name);
+      if (old.status === 'failed') out.fixed.push(r.name);
+    }
+  });
+  p.forEach((r, k) => {
+    if (!n.has(k)) out.removed.push(r.name);
+  });
+  return out;
 }

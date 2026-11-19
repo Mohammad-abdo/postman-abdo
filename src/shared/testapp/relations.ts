@@ -60,14 +60,14 @@ export function classify(e: Endpoint): { role: Role; resource: string | null; ve
   return { role: 'unknown', resource: lits[0] || null };
 }
 
-export function buildGraph(model: ApiModel): RelationshipGraph {
+export function buildGraph(model: ApiModel, opts: { roleOverrides?: Record<string, { role: Role; resource: string | null; verb?: string }> } = {}): RelationshipGraph {
   const roles: RelationshipGraph['roles'] = {};
   const byResource = new Map<string, Resource>();
   const unresolved: RelationshipGraph['unresolved'] = [];
   const edges: Edge[] = [];
 
   for (const e of model.endpoints) {
-    const c = classify(e);
+    const c = opts.roleOverrides?.[e.key] ?? classify(e);
     roles[e.key] = c;
     if (c.role === 'unknown') unresolved.push({ endpoint: e.key, reason: 'No relationship rule recognised this path/method shape' });
     if (!c.resource || e.flags.external || BACKGROUND.test(e.segments[e.segments.length - 1] || '')) continue;

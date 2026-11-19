@@ -1,4 +1,5 @@
 import { ApiModel, ActionDef, AppSchema, Component, Conflict, Contract, Endpoint, Override, Proposal, RelationshipGraph, Resource, Screen, TraceEntry } from './types';
+import { CustomRuleResult } from './custom-rules';
 import { BACKGROUND } from './relations';
 import { columnsFor, filterParams, findList, formFields, idFieldOf, paging, queryFields, searchParam, singularTitle, sortParams, successExample } from './ui-helpers';
 import { hashOf, titleCase } from './util';
@@ -346,7 +347,7 @@ function explorerScreen(): Screen {
 }
 
 export const BUILTIN_RULES = rules;
-export const ruleSetVersion = (disabled: string[] = []) => hashOf(rules.map((r) => [r.id, r.version, r.priority, !disabled.includes(r.id)])).slice(0, 12);
+export const ruleSetVersion = (disabled: string[] = [], custom: unknown[] = []) => hashOf([rules.map((r) => [r.id, r.version, r.priority, !disabled.includes(r.id)]), custom]).slice(0, 12);
 
 /* ------------------------------------------------------------------ */
 /* Resolution                                                          */
@@ -370,12 +371,12 @@ export function resolve(proposals: Proposal[]) {
 }
 
 /** Runs the enabled rules in priority order and assembles screens/actions/nav from the winning proposals. */
-export function evaluateRules(base: { model: ApiModel; contract: Contract; graph: RelationshipGraph }, opts: { overrides?: Override[]; disabledRules?: string[] } = {}) {
+export function evaluateRules(base: { model: ApiModel; contract: Contract; graph: RelationshipGraph }, opts: { overrides?: Override[]; disabledRules?: string[]; custom?: CustomRuleResult } = {}) {
   const { model, contract, graph } = base;
   const disabled = new Set(opts.disabledRules || []);
   const overrides = opts.overrides || [];
   const excluded = new Map(overrides.filter((o) => o.decision.exclude !== undefined).map((o) => [o.target, o.decision.exclude as string]));
-  const forceExplorer = new Set(overrides.filter((o) => o.decision.include).map((o) => o.target));
+  const forceExplorer = new Set([...overrides.filter((o) => o.decision.include).map((o) => o.target), ...(opts.custom?.explorer || [])]);
   const byKey = new Map(model.endpoints.map((e) => [e.key, e]));
   const ctx: RuleCtx = {
     model, contract, graph, resources: graph.resources, mapped: new Set(), forceExplorer,
@@ -393,6 +394,9 @@ export function evaluateRules(base: { model: ApiModel; contract: Contract; graph
   }
   // user overrides (highest layer)
   excluded.forEach((reason, key) => proposals.push({ slot: disp(key), value: { state: 'excluded', reason: reason || 'Excluded by user' }, ruleId: 'USER', layer: 'user', priority: 1000, provenance: 'user' }));
+
+  overrides.filter((o) => o.decision.include).forEach((o) => proposals.push({ slot: disp(o.target), value: { state: 'explorer', reason: 'Sent to the API Explorer by user' }, ruleId: 'USER', layer: 'user', priority: 1000, provenance: 'user' }));
+  if (opts.custom) proposals.push(...opts.custom.proposals);
 
   const { winners, conflicts, trace } = resolve(proposals);
   const bySlotPrefix = (prefix: string) => [...winners.entries()].filter(([s]) => s.startsWith(prefix));
@@ -420,8 +424,8 @@ export function evaluateRules(base: { model: ApiModel; contract: Contract; graph
   });
 
   // user-excluded endpoints: remove what depends on them
-  const dead = new Set(Object.entries(dispositions).filter(([, d]) => d.state === 'excluded' || d.state === 'background').map(([k]) => k));
-  for (const [id, a] of Object.entries(actions)) if (dead.has(a.endpoint)) delete actions[id];
+  const dead = new Set(Object.entries(dispositions).filter(([, d]) => d.state === 'excluded' || d.state === 'background' || d.state === 'explorer').map(([k]) => k));
+  for (const [id, a] of Object.entries(actions)) if (dead.has(a.endpoint) && !id.startsWith('act.explorer.')) delete actions[id];
   const stripRows = (c: Component) => {
     if (Array.isArray(c.rowActions)) c.rowActions = c.rowActions.filter((r: any) => !r.action || actions[r.action]);
     return c;
@@ -437,7 +441,25 @@ export function evaluateRules(base: { model: ApiModel; contract: Contract; graph
       s.provenance = 'user';
     }
   }
-  const real = [...screens.values()].filter((s) => s.components.length > 0);
+  // Prune what became empty after exclusions: modals/sections/buttons without targets, then screens with no useful content.
+  const originalSourceCount = new Map([...screens.values()].map((s) => [s.id, s.sources.length]));
+  let real: Screen[] = [...screens.values()];
+  for (let pass = 0; pass < 4; pass++) {
+    const alive = new Set(real.map((s) => s.id));
+    for (const s of real) {
+      s.components = s.components.filter((c) => {
+        if (c.type === 'button' && !c.action && c.opens && !alive.has(c.opens)) return false;
+        if (c.type === 'section' && !s.components.some((x) => x.parent === c.id)) return false;
+        return true;
+      });
+      s.components = s.components.filter((c) => !c.parent || s.components.some((x) => x.id === c.parent));
+    }
+    real = real.filter((s) => {
+      const useful = s.components.some((c) => c.type !== 'idPrompt');
+      const orphaned = (originalSourceCount.get(s.id) || 0) > 0 && s.sources.length === 0 && s.kind !== 'explorer';
+      return useful && !orphaned;
+    });
+  }
   const realIds = new Set(real.map((s) => s.id));
   for (const s of real) for (const c of s.components) {
     if (c.opens && !realIds.has(c.opens)) c.type = 'responseViewer';
