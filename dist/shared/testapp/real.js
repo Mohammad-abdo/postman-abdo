@@ -61,6 +61,14 @@ function gateRequest(args) {
 /** Builds the real URL for an endpoint from UI/test values. `resolve` maps `{{var}}` to its value. */
 function buildRealRequest(e, values, settings, resolve) {
     const missing = [];
+    const variable = /\{\{\s*([^{}\s]+)\s*\}\}/g;
+    const resolveValue = (value) => value.replace(variable, (raw, name) => {
+        const found = resolve(name);
+        if (found !== undefined)
+            return found;
+        missing.push(name);
+        return raw;
+    });
     const path = e.path
         .split('/')
         .map((seg) => {
@@ -72,7 +80,7 @@ function buildRealRequest(e, values, settings, resolve) {
             missing.push(m[1]);
             return seg;
         }
-        return encodeURIComponent(String(v));
+        return encodeURIComponent(resolveValue(String(v)));
     })
         .join('/');
     let origin = settings.baseUrl?.replace(/\/+$/, '') || '';
@@ -85,11 +93,12 @@ function buildRealRequest(e, values, settings, resolve) {
     const query = {};
     e.query.forEach((q) => q.example !== undefined && q.example !== '' && (query[q.name] = q.example));
     Object.entries(values.query || {}).forEach(([k, v]) => v !== '' && (query[k] = String(v)));
-    const qs = new URLSearchParams(values.queryEntries ?? query).toString();
+    const queryPairs = values.queryEntries ?? Object.entries(query);
+    const qs = new URLSearchParams(queryPairs.map(([key, value]) => [key, resolveValue(value)])).toString();
     const url = `${origin}${path}${qs ? `?${qs}` : ''}`;
     if (/\{\{/.test(origin))
         missing.push('base URL variable');
-    return { method: e.method, url, query, body: values.body ?? e.body.example, missing };
+    return { method: e.method, url, query, body: values.body ?? e.body.example, missing: [...new Set(missing)] };
 }
 exports.DEFAULT_COMPARE_RULES = {
     ignoreValueKeys: /(^|_|\b)(id|uuid|token|accesstoken|refreshtoken|jwt|created|updated|deleted|expires|timestamp|date|time|etag|nonce|cursor|url|href)s?$|at$/i,

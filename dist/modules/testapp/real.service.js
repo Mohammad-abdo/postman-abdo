@@ -44,6 +44,18 @@ function assertRealEnabled(app) {
  * no redirects, scripts off unless enabled, timeout, response-size cap, daily request quota.
  * Never reachable from public share links.
  */
+function folderAuth(items, requestId, inherited) {
+    for (const item of items) {
+        if (item.id === requestId && item.request)
+            return inherited;
+        if (Array.isArray(item.item)) {
+            const auth = folderAuth(item.item, requestId, item.auth ?? inherited);
+            if (auth !== undefined)
+                return auth;
+        }
+    }
+    return undefined;
+}
 async function executeReal(args) {
     const { app, endpoint } = args;
     const settings = (0, exports.realSettingsOf)(app);
@@ -59,6 +71,9 @@ async function executeReal(args) {
         return { kind: 'skipped', reason: 'The request no longer exists in the collection' };
     await limits_service_1.limitsService.consumeRequests(args.userId, 1);
     const item = (0, request_mapper_1.requestToV21Item)({ ...row, examples: [] }, { forRun: true });
+    const inheritedAuth = folderAuth(ctx.collection.item || [], item.id);
+    if (!item.request.auth && inheritedAuth !== undefined)
+        item.request.auth = inheritedAuth;
     item.request.url = built.url; // string form: postman-runtime parses it itself
     const hasJsonBody = (0, util_1.isObj)(built.body) && built.method !== 'GET' && built.method !== 'HEAD';
     if (hasJsonBody && (!item.request.body || item.request.body.mode === 'raw')) {
