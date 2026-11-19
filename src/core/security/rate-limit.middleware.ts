@@ -55,6 +55,11 @@ export const rateLimits = {
   execute: () => middleware(createLimiter({ name: 'execute', points: 120, durationSeconds: 60 }), byUserOrIp, 'Too many requests sent. Wait a moment and try again.'),
   /** Public mock endpoints, per IP. */
   mock: () => middleware(createLimiter({ name: 'mock', points: 300, durationSeconds: 60 }), byIp, 'Mock server rate limit exceeded.'),
+  /** Test-app generation, mock invocation and test runs, per user. */
+  testApp: () => middleware(createLimiter({ name: 'testapp', points: 240, durationSeconds: 60 }), byUserOrIp, 'Too many test app requests. Wait a moment and try again.'),
+  /** Public shared test apps: per IP and per link. */
+  testAppPublic: () =>
+    middleware(createLimiter({ name: 'testapp-public', points: 120, durationSeconds: 60 }), (req) => , 'Too many requests to this shared app. Slow down.'),
   /** File uploads and imports, per user. */
   upload: () => middleware(createLimiter({ name: 'upload', points: 30, durationSeconds: 60 }), byUserOrIp, 'Too many uploads. Try again later.'),
 };

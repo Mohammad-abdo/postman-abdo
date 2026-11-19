@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import YAML from 'yaml';
 import { prisma, json as toJsonColumn } from '../../core/database/prisma';
 import { BadRequest } from '../../core/errors/http-error';
+import { safeFetchText } from '../../core/security/safe-fetch';
 import { authFromV2 } from '../../shared/postman/auth.mapper';
 import { descriptionText } from '../../shared/postman/kv.mapper';
 import { exampleFromV2, requestFromV2Item } from '../../shared/postman/request.mapper';
@@ -121,9 +122,6 @@ export const transferService = {
     throw BadRequest(`Could not detect the format of ${fileName || 'the input'}`);
   },
 
-  async fetchText(url: string) {
-    const response = await fetch(url);
-    if (!response.ok) throw BadRequest(`Could not fetch ${url} (${response.status})`);
-    return response.text();
-  },
+  /** Fetches a remote collection/spec through the SSRF-guarded fetcher. */
+  fetchText: (url: string) => safeFetchText(url),
 };

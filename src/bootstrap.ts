@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { env } from './config/env';
 import { prisma } from './core/database/prisma';
 import { pruneIdempotencyRecords } from './core/middleware/idempotency.middleware';
+import { pruneTestAppSessions } from './modules/testapp/testapp.service';
 import { workspaceService } from './modules/workspaces/workspace.service';
 
 /** Makes sure the ADMIN_EMAIL account exists and is a super admin. */
@@ -23,5 +24,7 @@ async function ensureAdmin() {
 export async function bootstrap() {
   await ensureAdmin();
   await pruneIdempotencyRecords();
+  await pruneTestAppSessions().catch(() => undefined);
+  setInterval(() => pruneTestAppSessions().catch(() => undefined), 3600 * 1000).unref();
   setInterval(() => pruneIdempotencyRecords().catch(() => undefined), 24 * 3600 * 1000).unref();
 }

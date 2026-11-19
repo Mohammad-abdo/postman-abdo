@@ -33,6 +33,8 @@ import { platformService } from './modules/platform/platform.service';
 import { projectRoutes } from './modules/projects/project.routes';
 import { requestRoutes } from './modules/requests/request.routes';
 import { syncRoutes } from './modules/sync/sync.routes';
+import { testAppRoutes } from './modules/testapp/testapp.routes';
+import { publicTestAppRoutes } from './modules/testapp/public.routes';
 import { transferRoutes } from './modules/transfer/transfer.routes';
 import { workspaceRoutes } from './modules/workspaces/workspace.routes';
 
@@ -64,6 +66,7 @@ function apiRouter() {
   authed.use('/admin', adminRoutes);
   authed.use(maintenanceGate);
   authed.use('/execute', rateLimits.execute());
+  authed.use('/testapps', rateLimits.testApp());
   authed.use(activityTracker);
 
   const modules: [string, Router][] = [
@@ -87,6 +90,7 @@ function apiRouter() {
     ['/notifications', notificationRoutes],
     ['/chat', chatRoutes],
     ['/realtime', realtimeRoutes],
+    ['/testapps', testAppRoutes],
   ];
   modules.forEach(([prefix, router]) => authed.use(prefix, router));
   api.use(authed);
@@ -98,6 +102,8 @@ export function createApp() {
   applySecurity(app);
   // Mock endpoints receive arbitrary bodies, so they are mounted before the JSON parser.
   app.use('/mock', rateLimits.mock(), mockServeRoutes);
+  // Shared test apps: public, mock-only, own small body limit, per-IP+link rate limit.
+  app.use('/public/testapp', rateLimits.testAppPublic(), express.json({ limit: '256kb' }), publicTestAppRoutes);
   // Notification tones are public static files so <audio> can load them.
   app.use('/sounds', soundFileRoutes);
   app.use(express.json({ limit: '25mb' }));
@@ -105,7 +111,7 @@ export function createApp() {
 
   if (fs.existsSync(env.clientDist)) {
     app.use(express.static(env.clientDist, { maxAge: '1h', index: false }));
-    app.get(/^(?!\/(api|mock|sounds|ws|ws-proxy)(\/|$)).*/,(_req, res) => res.sendFile(path.join(env.clientDist, 'index.html')));
+    app.get(/^(?!\/(api|mock|public|sounds|ws|ws-proxy)(\/|$)).*/,(_req, res) => res.sendFile(path.join(env.clientDist, 'index.html')));
   }
 
   app.use(errorHandler);
