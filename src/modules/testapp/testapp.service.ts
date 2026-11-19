@@ -2,6 +2,7 @@ import { TestApp, TestAppSession } from '@prisma/client';
 import { json, prisma } from '../../core/database/prisma';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../core/errors/http-error';
 import { diffContracts } from '../../shared/testapp/contract';
+import { redact } from '../../shared/testapp/ai';
 import { generateApp, savedResponse } from '../../shared/testapp/generate';
 import { MockCtx, MockState, createInitialState, invoke } from '../../shared/testapp/mock';
 import { CustomTest, TestResult, compareRuns, coverageOf, createMockProbe, runMockTests } from '../../shared/testapp/testing';
@@ -306,13 +307,17 @@ export const testAppService = {
     const started = Date.now();
     const ctx = ctxOf(v, app.settings);
     const source = action?.kind === 'request' && ctx.model.endpoints.find((entry) => entry.key === endpoint);
-    const savedExample = source && savedResponse(source, input.values.savedExample);
+    const selectedExample = source && savedResponse(source, input.values.savedExample);
+    const savedExample = selectedExample && s.shareId ? { ...selectedExample, headers: {}, body: redact(selectedExample.body) } : selectedExample;
     const state = s.state as unknown as MockState;
     const out = source ? {
       state,
       result: { ...(savedExample || { status: 501, headers: {}, body: 'No saved response for this request.' }), endpoint, role: 'request', provenance: savedExample ? 'documented' : 'unknown', trace: [savedExample ? 'Replayed saved collection response' : 'No saved response'] },
     } : invoke(ctx, state, req);
     const log = { ts: new Date().toISOString(), actionId: input.actionId, endpoint: out.result.endpoint || endpoint, role: out.result.role, request: req, status: out.result.status, scenario: input.scenario || 'success', provenance: out.result.provenance, trace: out.result.trace, durationMs: Date.now() - started };
+    if (source) {
+      return { request: req, response: { status: out.result.status, headers: out.result.headers, body: out.result.body }, trace: out.result.trace, provenance: out.result.provenance, role: out.result.role, endpoint, actionId: input.actionId, durationMs: log.durationMs, loggedIn: false };
+    }
     const logs = [...(Array.isArray(s.logs) ? (s.logs as unknown[]) : []), log].slice(-TESTAPP_LIMITS.logEntries);
     const saved = await prisma.testAppSession.updateMany({ where: { id: s.id, rev: s.rev }, data: { state: json(out.state), logs: json(logs), rev: { increment: 1 }, lastSeenAt: new Date(), expiresAt: new Date(Date.now() + TESTAPP_LIMITS.sessionTtlMs) } });
     if (!saved.count) throw Conflict('The session changed in another tab; retry the request.');

@@ -6,6 +6,7 @@ exports.generateApp = generateApp;
 const analyzer_1 = require("./analyzer");
 const contract_1 = require("./contract");
 const custom_rules_1 = require("./custom-rules");
+const util_1 = require("./util");
 const relations_1 = require("./relations");
 const rules_1 = require("./rules");
 exports.REQUEST_RULE = 'request-interfaces-v1';
@@ -33,8 +34,9 @@ function requestMapping(model, overrides) {
     const result = { nav: [], screens: [], actions: {}, dispositions: {}, workflows: [], review: [], conflicts: [], trace: [] };
     const titles = new Map(overrides?.map((override) => [override.target, override.decision.title]));
     for (const request of model.endpoints) {
-        const screen = `request.${request.order}`;
-        const id = `send.${request.order}`;
+        const requestId = (0, util_1.sha256)(request.id).slice(0, 24);
+        const screen = `request.${requestId}`;
+        const id = `send.${requestId}`;
         const title = titles.get(request.key) || titles.get(screen) || request.name;
         const method = request.method;
         const label = method === 'DELETE' ? 'Delete' : method === 'GET' ? `Fetch ${request.name}` : `Send ${method}`;
@@ -58,7 +60,9 @@ function generateApp(collection, opts = {}) {
     const contract = (0, contract_1.buildContract)(model);
     const customRules = (opts.perRequest ? [] : opts.customRules || []);
     const pre = customRules.length ? (0, custom_rules_1.evaluateCustomRules)(model, customRules) : null;
-    const graph = (0, relations_1.buildGraph)(model, { roleOverrides: pre?.roleOverrides });
+    const graph = opts.perRequest
+        ? { resources: [], edges: [], roles: Object.fromEntries(model.endpoints.map(({ key }) => [key, { role: 'unknown', resource: null }])), authLogin: null, cycles: [], unresolved: [] }
+        : (0, relations_1.buildGraph)(model, { roleOverrides: pre?.roleOverrides });
     // second pass: facts now reflect role overrides (deterministic), producing the final dispositions
     const custom = customRules.length ? (0, custom_rules_1.evaluateCustomRules)(model, customRules, (e) => graph.roles[e.key]) : undefined;
     const mapped = opts.perRequest ? requestMapping(model, opts.overrides) : (0, rules_1.evaluateRules)({ model, contract, graph }, { overrides: opts.overrides, disabledRules: opts.disabledRules, custom });

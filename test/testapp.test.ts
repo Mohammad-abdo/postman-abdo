@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { analyzeCollection } from '../src/shared/testapp/analyzer';
 import { diffContracts, inferSchema, mergeSchemas, validateAgainst } from '../src/shared/testapp/contract';
-import { generateApp } from '../src/shared/testapp/generate';
+import { generateApp, savedResponse } from '../src/shared/testapp/generate';
 import { MockCtx, createInitialState, invoke } from '../src/shared/testapp/mock';
 import { publicSchema } from '../src/shared/testapp/public';
 import { runMockTests } from '../src/shared/testapp/testing';
@@ -10,6 +10,30 @@ import { stableStringify } from '../src/shared/testapp/util';
 import { item, shopCollection } from './fixtures/shop';
 
 const bundle = () => generateApp(shopCollection());
+
+describe('independent request screens', () => {
+  it('uses source order, distinct fields and saved examples even when URLs repeat', () => {
+    const url = { raw: 'https://example.test/users?id=2', host: ['example.test'], protocol: 'https', path: ['users'], query: [{ key: 'id', value: '2' }] };
+    const request = (id: string, name: string) => ({
+      id, name,
+      request: { method: 'GET', url, header: [{ key: 'id', value: 'abc' }] },
+      response: [
+        { name: 'Success', code: 200, body: '{"data":[{"id":2}]}' },
+        { name: 'Missing', code: 404, body: 'missing' },
+      ],
+    });
+    const collection = { info: { name: 'Users' }, item: [{ name: 'Users', item: [request('one', 'First')] }, request('two', 'Second')] };
+    const { schema, model, graph } = generateApp(collection, { perRequest: true });
+    assert.deepEqual(schema.nav.map((item) => [item.label, item.folderPath]), [['First', ['Users']], ['Second', []]]);
+    assert.equal(schema.screens.length, 2);
+    assert.notEqual(schema.screens[0].sources[0], schema.screens[1].sources[0]);
+    assert.deepEqual(graph.edges, []);
+    const action = Object.values(schema.actions)[0];
+    assert.deepEqual(action.inputs.map(({ name, in: location, key }) => [name, location, key]), [['id', 'query', 'field:0'], ['id', 'header', 'field:1']]);
+    assert.deepEqual(savedResponse(model.endpoints[0], '1'), { status: 404, headers: {}, body: 'missing' });
+    assert.equal(savedResponse(model.endpoints[0], '99'), undefined);
+  });
+});
 
 describe('analyzer', () => {
   const model = analyzeCollection(shopCollection());

@@ -1,6 +1,7 @@
 import { analyzeCollection } from './analyzer';
 import { buildContract } from './contract';
 import { CustomRule, evaluateCustomRules } from './custom-rules';
+import { sha256 } from './util';
 import { buildGraph } from './relations';
 import { evaluateRules, ruleSetVersion } from './rules';
 import { AppSchema, Bundle, Endpoint, FieldDef, GenerateOptions } from './types';
@@ -31,8 +32,9 @@ function requestMapping(model: Bundle['model'], overrides: GenerateOptions['over
   const result: ReturnType<typeof requestMapping> = { nav: [], screens: [], actions: {}, dispositions: {}, workflows: [], review: [], conflicts: [], trace: [] };
   const titles = new Map(overrides?.map((override) => [override.target, override.decision.title]));
   for (const request of model.endpoints) {
-    const screen = `request.${request.order}`;
-    const id = `send.${request.order}`;
+    const requestId = sha256(request.id).slice(0, 24);
+    const screen = `request.${requestId}`;
+    const id = `send.${requestId}`;
     const title = titles.get(request.key) || titles.get(screen) || request.name;
     const method = request.method;
     const label = method === 'DELETE' ? 'Delete' : method === 'GET' ? `Fetch ${request.name}` : `Send ${method}`;
@@ -57,7 +59,9 @@ export function generateApp(collection: unknown, opts: GenerateOptions & { sourc
   const contract = buildContract(model);
   const customRules = (opts.perRequest ? [] : opts.customRules || []) as CustomRule[];
   const pre = customRules.length ? evaluateCustomRules(model, customRules) : null;
-  const graph = buildGraph(model, { roleOverrides: pre?.roleOverrides });
+  const graph: Bundle['graph'] = opts.perRequest
+    ? { resources: [], edges: [], roles: Object.fromEntries(model.endpoints.map(({ key }) => [key, { role: 'unknown', resource: null }])), authLogin: null, cycles: [], unresolved: [] }
+    : buildGraph(model, { roleOverrides: pre?.roleOverrides });
   // second pass: facts now reflect role overrides (deterministic), producing the final dispositions
   const custom = customRules.length ? evaluateCustomRules(model, customRules, (e) => graph.roles[e.key]) : undefined;
   const mapped = opts.perRequest ? requestMapping(model, opts.overrides) : evaluateRules({ model, contract, graph }, { overrides: opts.overrides, disabledRules: opts.disabledRules, custom });

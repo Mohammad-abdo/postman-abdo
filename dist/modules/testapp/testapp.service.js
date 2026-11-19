@@ -5,6 +5,7 @@ exports.pruneTestAppSessions = pruneTestAppSessions;
 const prisma_1 = require("../../core/database/prisma");
 const http_error_1 = require("../../core/errors/http-error");
 const contract_1 = require("../../shared/testapp/contract");
+const ai_1 = require("../../shared/testapp/ai");
 const generate_1 = require("../../shared/testapp/generate");
 const mock_1 = require("../../shared/testapp/mock");
 const testing_1 = require("../../shared/testapp/testing");
@@ -300,13 +301,17 @@ exports.testAppService = {
         const started = Date.now();
         const ctx = ctxOf(v, app.settings);
         const source = action?.kind === 'request' && ctx.model.endpoints.find((entry) => entry.key === endpoint);
-        const savedExample = source && (0, generate_1.savedResponse)(source, input.values.savedExample);
+        const selectedExample = source && (0, generate_1.savedResponse)(source, input.values.savedExample);
+        const savedExample = selectedExample && s.shareId ? { ...selectedExample, headers: {}, body: (0, ai_1.redact)(selectedExample.body) } : selectedExample;
         const state = s.state;
         const out = source ? {
             state,
             result: { ...(savedExample || { status: 501, headers: {}, body: 'No saved response for this request.' }), endpoint, role: 'request', provenance: savedExample ? 'documented' : 'unknown', trace: [savedExample ? 'Replayed saved collection response' : 'No saved response'] },
         } : (0, mock_1.invoke)(ctx, state, req);
         const log = { ts: new Date().toISOString(), actionId: input.actionId, endpoint: out.result.endpoint || endpoint, role: out.result.role, request: req, status: out.result.status, scenario: input.scenario || 'success', provenance: out.result.provenance, trace: out.result.trace, durationMs: Date.now() - started };
+        if (source) {
+            return { request: req, response: { status: out.result.status, headers: out.result.headers, body: out.result.body }, trace: out.result.trace, provenance: out.result.provenance, role: out.result.role, endpoint, actionId: input.actionId, durationMs: log.durationMs, loggedIn: false };
+        }
         const logs = [...(Array.isArray(s.logs) ? s.logs : []), log].slice(-exports.TESTAPP_LIMITS.logEntries);
         const saved = await prisma_1.prisma.testAppSession.updateMany({ where: { id: s.id, rev: s.rev }, data: { state: (0, prisma_1.json)(out.state), logs: (0, prisma_1.json)(logs), rev: { increment: 1 }, lastSeenAt: new Date(), expiresAt: new Date(Date.now() + exports.TESTAPP_LIMITS.sessionTtlMs) } });
         if (!saved.count)
