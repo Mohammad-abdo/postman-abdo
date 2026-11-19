@@ -66,7 +66,7 @@ export interface BuiltRequest {
 }
 
 /** Builds the real URL for an endpoint from UI/test values. `resolve` maps `{{var}}` to its value. */
-export function buildRealRequest(e: Endpoint, values: { pathParams?: Record<string, string>; query?: Record<string, string>; body?: unknown }, settings: RealSettings, resolve: (name: string) => string | undefined): BuiltRequest {
+export function buildRealRequest(e: Endpoint, values: { pathParams?: Record<string, string>; query?: Record<string, string>; queryEntries?: [string, string][]; body?: unknown }, settings: RealSettings, resolve: (name: string) => string | undefined): BuiltRequest {
   const missing: string[] = [];
   const path = e.path
     .split('/')
@@ -90,7 +90,7 @@ export function buildRealRequest(e: Endpoint, values: { pathParams?: Record<stri
   const query: Record<string, string> = {};
   e.query.forEach((q) => q.example !== undefined && q.example !== '' && (query[q.name] = q.example));
   Object.entries(values.query || {}).forEach(([k, v]) => v !== '' && (query[k] = String(v)));
-  const qs = new URLSearchParams(query).toString();
+  const qs = new URLSearchParams(values.queryEntries ?? query).toString();
   const url = `${origin}${path}${qs ? `?${qs}` : ''}`;
   if (/\{\{/.test(origin)) missing.push('base URL variable');
   return { method: e.method, url, query, body: values.body ?? e.body.example, missing };

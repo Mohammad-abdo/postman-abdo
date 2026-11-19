@@ -78,8 +78,9 @@ const castInput = (kind: string, v: unknown) => {
 };
 
 function requestFromAction(action: ActionDef, values: Record<string, unknown>) {
-  const pathParams: Record<string, string> = {};
-  const query: Record<string, string> = {};
+  const pathParams: Record<string, string> = Object.create(null);
+  const query: Record<string, string> = Object.create(null);
+  const queryEntries: [string, string][] = [];
   const body: Record<string, unknown> = Object.create(null);
   const headers: Record<string, string> = Object.create(null);
   let rawBody: unknown;
@@ -89,14 +90,17 @@ function requestFromAction(action: ActionDef, values: Record<string, unknown>) {
       rawBody = raw;
       continue;
     }
-    const v = f.in === 'header' && typeof raw === 'string' ? raw : castInput(f.input, raw);
+    const v = action.kind === 'request' && typeof raw === 'string' && ['header', 'query', 'form'].includes(f.in) ? raw : castInput(f.input, raw);
     if (v === undefined) continue;
     if (f.in === 'path') pathParams[f.name] = String(v);
-    else if (f.in === 'query') query[f.name] = String(v);
+    else if (f.in === 'query') {
+      query[f.name] = String(v);
+      queryEntries.push([f.name, String(v)]);
+    }
     else if (f.in === 'header') headers[f.name] = String(v);
     else if (f.in === 'body' || f.in === 'form') body[f.name] = v;
   }
-  return { pathParams, query, body, headers, rawBody };
+  return { pathParams, query, queryEntries, body, headers, rawBody };
 }
 
 export const testAppService = {
@@ -447,7 +451,7 @@ export const testAppService = {
     if (!endpoint) throw NotFound('Endpoint not found');
     const req = requestFromAction(action, input.values);
     const started = Date.now();
-    const out = await executeReal({ userId, app, endpoint, values: { pathParams: req.pathParams, query: req.query, body: req.rawBody ?? (Object.keys(req.body).length ? req.body : undefined), headers: req.headers, rawBody: req.rawBody !== undefined, form: action.kind === 'request' ? req.body : undefined }, confirmUnsafe: input.confirmUnsafe, confirmProduction: input.confirmProduction });
+    const out = await executeReal({ userId, app, endpoint, values: { pathParams: req.pathParams, query: req.query, queryEntries: action.kind === 'request' ? req.queryEntries : undefined, body: req.rawBody ?? (Object.keys(req.body).length ? req.body : undefined), headers: req.headers, rawBody: req.rawBody !== undefined, form: action.kind === 'request' ? req.body : undefined }, confirmUnsafe: input.confirmUnsafe, confirmProduction: input.confirmProduction });
     if (out.kind !== 'ok') {
       if (out.kind === 'blocked') throw Forbidden(out.reason);
       throw BadRequest(out.reason);

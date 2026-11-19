@@ -177,13 +177,10 @@ function analyzeCollection(collection, opts = {}) {
                 .filter((n) => n.param)
                 .map((n) => ({ name: n.param, in: 'path', example: asList(request.url?.variable).find((v) => v.key === n.param)?.value }));
             const queryParams = [
-                ...asList(request.url?.query).map((q) => ({ name: String(q.key), in: 'query', example: q.value == null ? undefined : String(q.value), description: typeof q.description === 'string' ? q.description : undefined })),
+                ...asList(request.url?.query).filter((q) => q?.key && !q.disabled).map((q) => ({ name: String(q.key), in: 'query', example: q.value == null ? undefined : String(q.value), description: typeof q.description === 'string' ? q.description : undefined })),
             ];
-            if (!queryParams.length && query) {
-                query.split('&').filter(Boolean).forEach((p) => {
-                    const [k, v = ''] = p.split('=');
-                    queryParams.push({ name: decodeURIComponent(k), in: 'query', example: decodeURIComponent(v) });
-                });
+            if (!Array.isArray(request.url?.query) && query) {
+                new URLSearchParams(query).forEach((value, name) => queryParams.push({ name, in: 'query', example: value }));
             }
             const headers = asList(request.header).filter((h) => h?.key && !h.disabled).map((h) => ({ name: String(h.key), in: 'header', example: SENSITIVE_HEADER.test(String(h.key)) ? undefined : String(h.value ?? '') }));
             const scripts = execText(item.event);

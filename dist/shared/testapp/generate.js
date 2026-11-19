@@ -34,7 +34,7 @@ function requestMapping(model, overrides) {
     const result = { nav: [], screens: [], actions: {}, dispositions: {}, workflows: [], review: [], conflicts: [], trace: [] };
     const titles = new Map(overrides?.map((override) => [override.target, override.decision.title]));
     for (const request of model.endpoints) {
-        const requestId = (0, util_1.sha256)(request.id).slice(0, 24);
+        const requestId = (0, util_1.sha256)(JSON.stringify([request.id, request.key])).slice(0, 24);
         const screen = `request.${requestId}`;
         const id = `send.${requestId}`;
         const title = titles.get(request.key) || titles.get(screen) || request.name;

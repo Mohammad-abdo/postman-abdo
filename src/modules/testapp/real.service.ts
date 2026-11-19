@@ -59,7 +59,7 @@ export async function executeReal(args: {
   userId: string;
   app: TestApp;
   endpoint: Endpoint;
-  values?: { pathParams?: Record<string, string>; query?: Record<string, string>; body?: unknown; headers?: Record<string, string>; rawBody?: boolean; form?: Record<string, unknown> };
+  values?: { pathParams?: Record<string, string>; query?: Record<string, string>; queryEntries?: [string, string][]; body?: unknown; headers?: Record<string, string>; rawBody?: boolean; form?: Record<string, unknown> };
   confirmUnsafe?: boolean;
   confirmProduction?: boolean;
   context?: RealContext;

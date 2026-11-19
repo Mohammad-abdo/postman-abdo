@@ -85,7 +85,7 @@ function buildRealRequest(e, values, settings, resolve) {
     const query = {};
     e.query.forEach((q) => q.example !== undefined && q.example !== '' && (query[q.name] = q.example));
     Object.entries(values.query || {}).forEach(([k, v]) => v !== '' && (query[k] = String(v)));
-    const qs = new URLSearchParams(query).toString();
+    const qs = new URLSearchParams(values.queryEntries ?? query).toString();
     const url = `${origin}${path}${qs ? `?${qs}` : ''}`;
     if (/\{\{/.test(origin))
         missing.push('base URL variable');

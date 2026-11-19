@@ -32,7 +32,7 @@ function requestMapping(model: Bundle['model'], overrides: GenerateOptions['over
   const result: ReturnType<typeof requestMapping> = { nav: [], screens: [], actions: {}, dispositions: {}, workflows: [], review: [], conflicts: [], trace: [] };
   const titles = new Map(overrides?.map((override) => [override.target, override.decision.title]));
   for (const request of model.endpoints) {
-    const requestId = sha256(request.id).slice(0, 24);
+    const requestId = sha256(JSON.stringify([request.id, request.key])).slice(0, 24);
     const screen = `request.${requestId}`;
     const id = `send.${requestId}`;
     const title = titles.get(request.key) || titles.get(screen) || request.name;
