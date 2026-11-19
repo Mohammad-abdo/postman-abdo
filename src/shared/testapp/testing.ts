@@ -11,7 +11,7 @@ export interface TestResult {
   endpoint?: string;
   screen?: string;
   action?: string;
-  mode: 'mock';
+  mode: 'mock' | 'real' | 'compare';
   status: 'passed' | 'failed' | 'warning' | 'skipped';
   expected: string;
   actual: string;

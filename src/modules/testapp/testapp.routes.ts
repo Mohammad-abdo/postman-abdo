@@ -4,7 +4,7 @@ import { testAppController as c } from './testapp.controller';
 import { createShareSchema, shareService } from './share.service';
 import { audit } from '../../core/audit/audit.service';
 import { currentUserId } from '../../core/middleware/auth.middleware';
-import { analyzeSchema, createSessionSchema, createTestAppSchema, invokeSchema, overrideSchema, regenerateSchema, resetSchema, updateTestAppSchema } from './testapp.schema';
+import { realInvokeSchema, rulesSchema, runSchema, analyzeSchema, createSessionSchema, createTestAppSchema, invokeSchema, overrideSchema, regenerateSchema, resetSchema, updateTestAppSchema } from './testapp.schema';
 
 /** Collection-to-Test-App generator (authenticated). Mounted at /api/testapps. */
 export const testAppRoutes = Router();
@@ -29,7 +29,11 @@ testAppRoutes.post('/:id/sessions/:sid/reset', validateBody(resetSchema), c.rese
 testAppRoutes.get('/:id/sessions/:sid/logs', c.logs);
 testAppRoutes.get('/:id/sessions/:sid/state', c.state);
 
-testAppRoutes.post('/:id/runs', c.run);
+testAppRoutes.post('/:id/runs', validateBody(runSchema), c.run);
+testAppRoutes.post('/:id/real/invoke', validateBody(realInvokeSchema), c.realInvoke);
+testAppRoutes.get('/:id/rules', c.rules);
+testAppRoutes.put('/:id/rules', validateBody(rulesSchema), c.saveRules);
+testAppRoutes.post('/:id/rules/preview', validateBody(rulesSchema), c.previewRules);
 testAppRoutes.get('/:id/runs', c.runs);
 testAppRoutes.get('/:id/runs/:rid', c.getRun);
 testAppRoutes.get('/:id/runs/:rid/export', c.exportRun);

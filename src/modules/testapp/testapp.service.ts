@@ -4,8 +4,13 @@ import { BadRequest, Conflict, Forbidden, NotFound } from '../../core/errors/htt
 import { diffContracts } from '../../shared/testapp/contract';
 import { generateApp } from '../../shared/testapp/generate';
 import { MockCtx, MockState, createInitialState, invoke } from '../../shared/testapp/mock';
-import { runMockTests } from '../../shared/testapp/testing';
+import { CustomTest, TestResult, compareRuns, coverageOf, createMockProbe, runMockTests } from '../../shared/testapp/testing';
+import { validateRule } from '../../shared/testapp/custom-rules';
+import { BUILTIN_RULES } from '../../shared/testapp/rules';
+import { compareResponses, isSafeMethod } from '../../shared/testapp/real';
+import { validateAgainst } from '../../shared/testapp/contract';
 import { ActionDef, Bundle, Override } from '../../shared/testapp/types';
+import { REAL_LIMITS, assertRealEnabled, executeReal, loadRealContext, realSettingsOf } from './real.service';
 import { hashOf, isObj } from '../../shared/testapp/util';
 import { assertCollectionAccess } from '../collections/collection.access';
 import { collectionService } from '../collections/collection.service';
@@ -44,10 +49,13 @@ const ctxOf = (v: Parameters<typeof bundleOf>[0], settings: unknown): MockCtx =>
 const summary = (b: Bundle) => ({ stats: b.stats, warnings: b.model.warnings, review: b.schema.review, conflicts: b.schema.conflicts, screens: b.schema.screens.map((s) => ({ id: s.id, title: s.title, kind: s.kind, sources: s.sources })) });
 
 /** Builds a bundle from the live collection (source is only read, never written). */
-async function buildFromCollection(collectionId: string, overrides: Override[], seed: number) {
+async function buildFromCollection(collectionId: string, overrides: Override[], seed: number, settings?: unknown) {
   const collectionJson = await collectionService.toPostman(collectionId);
-  return { bundle: generateApp(collectionJson, { overrides, seed, sourceHash: hashOf(collectionJson) }), sourceHash: hashOf(collectionJson) };
+  const s = (isObj(settings) ? settings : {}) as { customRules?: unknown[]; disabledRules?: string[] };
+  return { bundle: generateApp(collectionJson, { overrides, seed, sourceHash: hashOf(collectionJson), customRules: s.customRules, disabledRules: s.disabledRules }), sourceHash: hashOf(collectionJson) };
 }
+
+const settingsOf = (app: TestApp) => (isObj(app.settings) ? app.settings : {}) as { customRules?: any[]; disabledRules?: string[]; customTests?: CustomTest[]; validation?: 'lenient' | 'strict'; rows?: number };
 
 function orphanOverrides(bundle: Bundle, overrides: Override[]) {
   const known = new Set([...bundle.model.endpoints.map((e) => e.key), ...bundle.schema.screens.map((s) => s.id)]);
@@ -140,7 +148,59 @@ export const testAppService = {
 
   async update(userId: string, id: string, input: { name?: string; settings?: Record<string, unknown> }) {
     const app = await access(userId, id, true);
+    // Pointing the app at a real backend is a workspace-admin decision.
+    if (input.settings && 'real' in input.settings) {
+      const member = await assertWorkspaceMember(userId, app.workspaceId);
+      if (member.role !== 'admin') throw Forbidden('Only workspace admins can configure Real API mode');
+    }
     return prisma.testApp.update({ where: { id }, data: { ...(input.name ? { name: input.name } : {}), ...(input.settings ? { settings: json({ ...(isObj(app.settings) ? app.settings : {}), ...input.settings }) } : {}) } });
+  },
+
+  /* ----------------------------- rules ----------------------------- */
+
+  async rules(userId: string, id: string) {
+    const app = await access(userId, id);
+    const s = settingsOf(app);
+    return {
+      custom: s.customRules || [],
+      disabled: s.disabledRules || [],
+      builtin: BUILTIN_RULES.map((r) => ({ id: r.id, name: r.name, description: r.description, priority: r.priority, enabled: !(s.disabledRules || []).includes(r.id), version: r.version })),
+    };
+  },
+
+  async saveRules(userId: string, id: string, input: { custom: unknown[]; disabled: string[] }) {
+    const app = await access(userId, id, true);
+    const known = new Set(BUILTIN_RULES.map((r) => r.id));
+    const unknown = input.disabled.filter((d) => !known.has(d));
+    if (unknown.length) throw BadRequest(`Unknown built-in rule(s): ${unknown.join(', ')}`);
+    const problems: { ruleId: string; errors: string[] }[] = [];
+    const ids = new Set<string>();
+    input.custom.forEach((r) => {
+      const errors = validateRule(r);
+      const rid = String((r as { id?: unknown })?.id);
+      if (ids.has(rid)) errors.push('duplicate rule id');
+      ids.add(rid);
+      if (errors.length) problems.push({ ruleId: rid, errors });
+    });
+    if (problems.length) throw BadRequest(`Invalid rule(s): ${problems.map((p) => `${p.ruleId}: ${p.errors.join('; ')}`).join(' | ')}`);
+    await prisma.testApp.update({ where: { id }, data: { settings: json({ ...settingsOf(app), customRules: input.custom, disabledRules: input.disabled }) } });
+    return { ok: true, note: 'Rules apply the next time you regenerate.' };
+  },
+
+  /** Dry run: what would these rules do to the current collection? Nothing is saved. */
+  async previewRules(userId: string, id: string, input: { custom: unknown[]; disabled: string[] }) {
+    const app = await access(userId, id);
+    const overrides = toOverrides(await prisma.testAppOverride.findMany({ where: { testAppId: id } }));
+    const current = await version(id, app.currentVersionId);
+    const { bundle } = await buildFromCollection(app.collectionId, overrides, current.seed, { ...settingsOf(app), customRules: input.custom, disabledRules: input.disabled });
+    const before = bundleOf(current);
+    const changed = Object.keys(bundle.schema.dispositions).filter((k) => before.schema.dispositions[k]?.state !== bundle.schema.dispositions[k].state || before.schema.dispositions[k]?.ruleId !== bundle.schema.dispositions[k].ruleId);
+    return {
+      matches: bundle.customRules.matches,
+      invalid: bundle.customRules.invalid,
+      changedEndpoints: changed.map((k) => ({ endpoint: k, from: before.schema.dispositions[k]?.state, to: bundle.schema.dispositions[k].state, rule: bundle.schema.dispositions[k].ruleId })),
+      stats: bundle.stats,
+    };
   },
 
   async remove(userId: string, id: string) {
@@ -164,7 +224,7 @@ export const testAppService = {
     const current = await version(id, app.currentVersionId);
     const overrides = toOverrides(await prisma.testAppOverride.findMany({ where: { testAppId: id } }));
     const seed = opts.seed ?? current.seed;
-    const { bundle, sourceHash } = await buildFromCollection(app.collectionId, overrides, seed);
+    const { bundle, sourceHash } = await buildFromCollection(app.collectionId, overrides, seed, app.settings);
     const before = bundleOf(current);
     const beforeScreens = new Set(before.schema.screens.map((s) => s.id));
     const afterScreens = new Set(bundle.schema.screens.map((s) => s.id));
@@ -270,14 +330,110 @@ export const testAppService = {
 
   /* ----------------------------- test runs ----------------------------- */
 
-  async run(userId: string, id: string) {
+  async run(userId: string, id: string, opts: { mode?: 'mock' | 'real' | 'compare'; confirmUnsafe?: boolean; confirmProduction?: boolean } = {}) {
     const app = await access(userId, id, true);
     const v = await version(id, app.currentVersionId);
-    const out = runMockTests(bundleOf(v), { seed: v.seed });
-    const row = await prisma.testRun.create({ data: { testAppId: id, versionId: v.id, mode: 'mock', stats: json(out.stats), results: json(out.results), coverage: json(out.coverage), startedById: userId } });
+    const mode = opts.mode || 'mock';
+    const bundle = bundleOf(v);
+    let results: TestResult[];
+    let extra: { hosts?: string[]; calls?: number } = {};
+    if (mode === 'mock') {
+      results = runMockTests(bundle, { seed: v.seed, customTests: settingsOf(app).customTests }).results;
+    } else {
+      assertRealEnabled(app);
+      const real = await testAppService.runAgainstReal(userId, app, bundle, v.seed, mode, opts);
+      results = real.results;
+      extra = { hosts: real.hosts, calls: real.calls };
+    }
+    const count = (s: string) => results.filter((r) => r.status === s).length;
+    const stats = { total: results.length, passed: count('passed'), failed: count('failed'), warnings: count('warning'), skipped: count('skipped') };
+    const coverage = coverageOf(bundle, results);
+    // regression: compare with the previous run of the same mode
+    const prev = await prisma.testRun.findFirst({ where: { testAppId: id, mode }, orderBy: { createdAt: 'desc' } });
+    const regression = prev ? compareRuns((prev.results || []) as unknown as TestResult[], results) : null;
+    const row = await prisma.testRun.create({ data: { testAppId: id, versionId: v.id, mode, stats: json({ ...stats, regression: regression && { newFailures: regression.newFailures.length, fixed: regression.fixed.length } }), results: json(results), coverage: json({ ...coverage, regression, ...extra }), startedById: userId } });
     const old = await prisma.testRun.findMany({ where: { testAppId: id }, orderBy: { createdAt: 'desc' }, skip: TESTAPP_LIMITS.runsPerApp, select: { id: true } });
     if (old.length) await prisma.testRun.deleteMany({ where: { id: { in: old.map((o) => o.id) } } });
-    return { id: row.id, createdAt: row.createdAt, version: v.version, ...out };
+    return { id: row.id, createdAt: row.createdAt, version: v.version, mode, results, stats, coverage: { ...coverage, regression }, regression, ...extra };
+  },
+
+  /** Real / comparison runs: only documented-safe calls by default, bounded in count and time. */
+  async runAgainstReal(userId: string, app: TestApp, bundle: Bundle, seed: number, mode: 'real' | 'compare', opts: { confirmUnsafe?: boolean; confirmProduction?: boolean }) {
+    const context = await loadRealContext(userId, app);
+    const probe = mode === 'compare' ? createMockProbe(bundle, seed) : null;
+    const results: TestResult[] = [];
+    const hosts = new Set<string>();
+    const started = Date.now();
+    let calls = 0;
+    const add = (r: Omit<TestResult, 'id' | 'mode'>) => results.push({ id: `T${String(results.length + 1).padStart(3, '0')}`, mode, ...r });
+    const candidates = bundle.model.endpoints.filter((e) => !['excluded', 'background'].includes(bundle.schema.dispositions[e.key]?.state) && !['auth.login', 'auth.logout', 'auth.refresh'].includes(bundle.graph.roles[e.key]?.role));
+    for (const e of candidates) {
+      const documented = [...new Set(e.examples.map((x) => x.code))];
+      const actionId = Object.values(bundle.schema.actions).find((a) => a.endpoint === e.key)?.id;
+      const base = { endpoint: e.key, action: actionId };
+      if (!e.examples.some((x) => x.code >= 200 && x.code < 300)) continue; // nothing documented to verify
+      if (calls >= REAL_LIMITS.maxEndpointsPerRun || Date.now() - started > REAL_LIMITS.runBudgetMs) {
+        add({ ...base, name: `${e.key} against the real API`, type: 'contract', status: 'skipped', expected: 'a real call', actual: 'not run', certainty: 'inferred', error: 'Run limit reached (40 endpoints or 2 minutes per run). Run again for the rest.' });
+        continue;
+      }
+      if (!isSafeMethod(e.method) && !opts.confirmUnsafe) {
+        add({ ...base, name: `${e.key} against the real API`, type: 'contract', status: 'skipped', expected: 'a real call', actual: 'not run', certainty: 'inferred', error: `${e.method} changes data and was not confirmed for this run.` });
+        continue;
+      }
+      calls++;
+      const out = await executeReal({ userId, app, endpoint: e, confirmUnsafe: opts.confirmUnsafe, confirmProduction: opts.confirmProduction, context });
+      if (out.kind !== 'ok') {
+        add({ ...base, name: `${e.key} against the real API`, type: 'contract', status: out.kind === 'error' ? 'failed' : 'skipped', expected: 'a real response', actual: out.kind, certainty: 'verified', error: out.reason });
+        continue;
+      }
+      try {
+        hosts.add(new URL(out.url).host);
+      } catch {
+        /* ignore */
+      }
+      const contract = bundle.contract.endpoints[e.key];
+      if (probe) {
+        const mock = probe(e.key);
+        const cmp = compareResponses({ mock: { status: mock.status, body: mock.body }, real: { status: out.status, body: out.body }, documentedCodes: documented, contract });
+        add({ ...base, name: `${e.key}: mock vs real`, type: 'contract', status: cmp.status, expected: cmp.expected, actual: cmp.actual, certainty: cmp.certainty, error: cmp.error, evidence: { request: { url: out.url }, response: { mockStatus: mock.status, realStatus: out.status, differences: cmp.diffs.slice(0, 30) } } });
+      } else {
+        const schema = contract?.responses[String(out.status)]?.schema;
+        const issues = schema ? validateAgainst(schema, out.body) : [];
+        const statusOk = documented.includes(out.status);
+        add({
+          ...base,
+          name: `${e.key} matches the contract (real)`,
+          type: 'contract',
+          status: !statusOk ? 'failed' : issues.length ? 'warning' : 'passed',
+          expected: `status in [${documented.join(', ')}] and the example structure`,
+          actual: `status ${out.status}${issues.length ? `; ${issues.length} schema note(s)` : ''} in ${out.ms} ms`,
+          certainty: !statusOk ? 'verified' : issues.length ? 'inferred' : 'verified',
+          error: [...(statusOk ? [] : [`Real status ${out.status} is not among the documented statuses`]), ...issues.slice(0, 5).map((i) => `${i.path}: ${i.message}`)].join('; ') || undefined,
+          evidence: { request: { url: out.url }, response: { status: out.status, headers: out.headers, body: out.body } },
+        });
+      }
+    }
+    return { results, hosts: [...hosts], calls };
+  },
+
+  /** One action against the real backend from the Preview (same guards as test runs). */
+  async realInvoke(userId: string, id: string, input: { actionId: string; values: Record<string, unknown>; confirmUnsafe?: boolean; confirmProduction?: boolean }) {
+    const app = await access(userId, id, true);
+    assertRealEnabled(app);
+    const v = await version(id, app.currentVersionId);
+    const schema = v.schema as unknown as Bundle['schema'];
+    const action = schema.actions[input.actionId];
+    if (!action) throw NotFound('Action not found in this version');
+    const endpoint = (v.model as unknown as Bundle['model']).endpoints.find((e) => e.key === action.endpoint);
+    if (!endpoint) throw NotFound('Endpoint not found');
+    const req = requestFromAction(action, input.values);
+    const started = Date.now();
+    const out = await executeReal({ userId, app, endpoint, values: { pathParams: req.pathParams, query: req.query, body: Object.keys(req.body).length ? req.body : undefined }, confirmUnsafe: input.confirmUnsafe, confirmProduction: input.confirmProduction });
+    if (out.kind !== 'ok') {
+      if (out.kind === 'blocked') throw Forbidden(out.reason);
+      throw BadRequest(out.reason);
+    }
+    return { request: { endpoint: endpoint.key, url: out.url, ...req }, response: { status: out.status, headers: out.headers, body: out.body }, trace: ['sent to the REAL backend (allowlisted host)'], provenance: 'real', role: undefined, endpoint: endpoint.key, actionId: input.actionId, durationMs: Date.now() - started, loggedIn: false };
   },
 
   async runs(userId: string, id: string) {

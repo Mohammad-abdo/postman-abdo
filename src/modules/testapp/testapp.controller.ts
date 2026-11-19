@@ -43,7 +43,23 @@ export const testAppController = {
   reset: async (req: Request, res: Response) => res.json(await testAppService.reset(u(req), p(req, 'id'), p(req, 'sid'), req.body.seed)),
   logs: async (req: Request, res: Response) => res.json(await testAppService.logs(u(req), p(req, 'id'), p(req, 'sid'))),
   state: async (req: Request, res: Response) => res.json(await testAppService.stateSummary(u(req), p(req, 'id'), p(req, 'sid'))),
-  run: async (req: Request, res: Response) => res.json(await testAppService.run(u(req), p(req, 'id'))),
+  run: async (req: Request, res: Response) => {
+    const out = await testAppService.run(u(req), p(req, 'id'), req.body);
+    if (req.body.mode !== 'mock') audit(req, { action: 'testapp.real.run', targetType: 'testapp', targetId: p(req, 'id'), details: { mode: req.body.mode, calls: out.calls, hosts: out.hosts, unsafeConfirmed: !!req.body.confirmUnsafe, productionConfirmed: !!req.body.confirmProduction } });
+    res.json(out);
+  },
+  realInvoke: async (req: Request, res: Response) => {
+    const out = await testAppService.realInvoke(u(req), p(req, 'id'), req.body);
+    audit(req, { action: 'testapp.real.invoke', targetType: 'testapp', targetId: p(req, 'id'), details: { actionId: req.body.actionId, endpoint: out.endpoint, status: out.response.status } });
+    res.json(out);
+  },
+  rules: async (req: Request, res: Response) => res.json(await testAppService.rules(u(req), p(req, 'id'))),
+  saveRules: async (req: Request, res: Response) => {
+    const out = await testAppService.saveRules(u(req), p(req, 'id'), req.body);
+    audit(req, { action: 'testapp.rules.update', targetType: 'testapp', targetId: p(req, 'id'), details: { custom: req.body.custom.length, disabled: req.body.disabled } });
+    res.json(out);
+  },
+  previewRules: async (req: Request, res: Response) => res.json(await testAppService.previewRules(u(req), p(req, 'id'), req.body)),
   runs: async (req: Request, res: Response) => res.json(await testAppService.runs(u(req), p(req, 'id'))),
   getRun: async (req: Request, res: Response) => res.json(await testAppService.getRun(u(req), p(req, 'id'), p(req, 'rid'))),
   exportRun: async (req: Request, res: Response) => {
