@@ -30,6 +30,8 @@ export const customTestSchema = z.object({
   noAuth: z.boolean().optional(),
   expectStatus: z.number().int().min(100).max(599),
   expectBodyKeys: z.array(z.string().max(200)).max(30).optional(),
+  origin: z.enum(['user', 'ai']).optional(),
+  reason: z.string().max(400).optional(),
 });
 
 export const updateTestAppSchema = z.object({

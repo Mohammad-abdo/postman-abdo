@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { validateBody } from '../../core/middleware/validate.middleware';
 import { testAppController as c } from './testapp.controller';
 import { createShareSchema, shareService } from './share.service';
+import { aiService } from './ai.service';
+import { z } from 'zod';
 import { audit } from '../../core/audit/audit.service';
 import { currentUserId } from '../../core/middleware/auth.middleware';
 import { realInvokeSchema, rulesSchema, runSchema, analyzeSchema, createSessionSchema, createTestAppSchema, invokeSchema, overrideSchema, regenerateSchema, resetSchema, updateTestAppSchema } from './testapp.schema';
@@ -49,4 +51,16 @@ testAppRoutes.delete('/:id/shares/:shareId', async (req, res) => {
   await shareService.revoke(currentUserId(req), String(req.params.id), String(req.params.shareId));
   audit(req, { action: 'testapp.share.revoke', targetType: 'testapp', targetId: String(req.params.id), details: { shareId: String(req.params.shareId) } });
   res.json({ ok: true });
+});
+
+testAppRoutes.get('/:id/ai/status', async (req, res) => res.json(await aiService.status(currentUserId(req), String(req.params.id))));
+testAppRoutes.post('/:id/ai/suggest', async (req, res) => {
+  const out = await aiService.suggestTests(currentUserId(req), String(req.params.id));
+  audit(req, { action: 'testapp.ai.suggest', targetType: 'testapp', targetId: String(req.params.id), details: { tokens: out.tokens, accepted: out.accepted.length, rejected: out.rejected.length } });
+  res.json(out);
+});
+testAppRoutes.post('/:id/ai/explain', validateBody(z.object({ runId: z.string().min(1).max(64), testId: z.string().min(1).max(20) })), async (req, res) => {
+  const out = await aiService.explain(currentUserId(req), String(req.params.id), req.body.runId, req.body.testId);
+  audit(req, { action: 'testapp.ai.explain', targetType: 'testapp', targetId: String(req.params.id), details: { tokens: out.tokens } });
+  res.json(out);
 });

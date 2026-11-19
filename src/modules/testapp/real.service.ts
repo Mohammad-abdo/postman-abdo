@@ -78,7 +78,7 @@ export async function executeReal(args: {
 
   await limitsService.consumeRequests(args.userId, 1);
   const item = requestToV21Item({ ...(row as unknown as RequestModel), examples: [] }, { forRun: true });
-  item.request.url = { raw: built.url };
+  item.request.url = built.url; // string form: postman-runtime parses it itself
   const hasJsonBody = isObj(built.body) && built.method !== 'GET' && built.method !== 'HEAD';
   if (hasJsonBody && (!item.request.body || item.request.body.mode === 'raw')) {
     item.request.body = { mode: 'raw', raw: JSON.stringify(built.body), options: { raw: { language: 'json' } } };

@@ -27,6 +27,13 @@ export const env = {
   trustProxy: bool(process.env.TRUST_PROXY, false),
   /** Stops the hosted executor from reaching private networks (SSRF protection). */
   blockPrivateNetworks: bool(process.env.BLOCK_PRIVATE_NETWORKS, nodeEnv === 'production'),
+  /** Optional AI assistant for test apps. Off unless explicitly enabled AND a key is provided. */
+  ai: {
+    enabled: bool(process.env.TESTAPP_AI_ENABLED, false) && !!process.env.ANTHROPIC_API_KEY,
+    apiKey: process.env.ANTHROPIC_API_KEY || '',
+    model: process.env.TESTAPP_AI_MODEL || 'claude-sonnet-5-5',
+    dailyTokenBudget: Number(process.env.TESTAPP_AI_DAILY_TOKENS) || 50000,
+  },
   /** Super admin created/promoted at startup. */
   adminEmail: (process.env.ADMIN_EMAIL || '').toLowerCase(),
   adminPassword: process.env.ADMIN_PASSWORD || '',

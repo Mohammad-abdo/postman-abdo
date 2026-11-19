@@ -20,7 +20,7 @@ describe('real executor network guard', () => {
   });
   after(() => server.close());
 
-  const collection = () => ({ info: { name: 't', schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' }, item: [{ id: 'one', name: 'one', request: { method: 'GET', url: { raw: `http://127.0.0.1:${port}/x` } } }] });
+  const collection = () => ({ info: { name: 't', schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' }, item: [{ id: 'one', name: 'one', request: { method: 'GET', url: `http://127.0.0.1:${port}/x` } }] });
 
   it('refuses loopback addresses when restrictedAddresses is set and never reaches the server', async () => {
     hits = 0;
@@ -45,7 +45,7 @@ describe('real executor network guard', () => {
     const p = (redirector.address() as { port: number }).port;
     hits = 0;
     const c = collection();
-    c.item[0].request.url.raw = `http://127.0.0.1:${p}/r`;
+    (c.item[0].request as any).url = `http://127.0.0.1:${p}/r`;
     const r = await runCollection({ collection: c, entrypoint: 'one', settings: { followRedirects: false, timeout: 5000 } });
     redirector.close();
     assert.equal(r.executions[0].response?.code, 302);

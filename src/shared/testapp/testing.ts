@@ -49,6 +49,9 @@ export interface CustomTest {
   noAuth?: boolean;
   expectStatus: number;
   expectBodyKeys?: string[];
+  /** where the test came from; AI-suggested tests only run after a user accepted them */
+  origin?: 'user' | 'ai';
+  reason?: string;
 }
 
 export function runMockTests(bundle: Bundle, opts: { seed?: number; customTests?: CustomTest[] } = {}) {
@@ -239,7 +242,7 @@ export function runMockTests(bundle: Bundle, opts: { seed?: number; customTests?
     const problems: string[] = [];
     if (res.status !== t.expectStatus) problems.push(`status ${res.status}, expected ${t.expectStatus}`);
     for (const k of t.expectBodyKeys || []) if (getPath(res.body, `$.${k}`) === undefined) problems.push(`missing ${k}`);
-    add({ name: t.name, type: 'custom', endpoint: e.key, status: problems.length ? 'failed' : 'passed', expected: `status ${t.expectStatus}${t.expectBodyKeys?.length ? ` with ${t.expectBodyKeys.join(', ')}` : ''}`, actual: problems.length ? problems.join('; ') : `status ${res.status}`, certainty: 'verified', evidence: { request: trunc(t), response: trunc(res.body) } });
+    add({ name: t.name, type: 'custom', endpoint: e.key, status: problems.length ? 'failed' : 'passed', expected: `status ${t.expectStatus}${t.expectBodyKeys?.length ? ` with ${t.expectBodyKeys.join(', ')}` : ''}`, actual: problems.length ? problems.join('; ') : `status ${res.status}`, certainty: 'verified', evidence: { origin: t.origin || 'user', request: trunc(t), response: trunc(res.body) } });
   }
 
   const stats = {

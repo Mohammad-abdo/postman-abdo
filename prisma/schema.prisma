@@ -565,3 +565,14 @@ model TestAppShare {
 
   @@index([testAppId])
 }
+
+/// Daily AI token usage per workspace (budget enforcement for the optional AI test assistant).
+model TestAppAiUsage {
+  id          String   @id @default(uuid())
+  workspaceId String
+  day         DateTime @db.Date
+  tokens      Int      @default(0)
+  calls       Int      @default(0)
+
+  @@unique([workspaceId, day])
+}
