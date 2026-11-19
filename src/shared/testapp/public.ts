@@ -7,7 +7,7 @@ export function publicSchema(schema: AppSchema) {
     app: { name: schema.app.name, seed: schema.app.seed },
     nav: schema.nav,
     screens: schema.screens.map((s) => ({ ...s, sources: [] as string[] })),
-    actions: Object.fromEntries(Object.entries(schema.actions).map(([k, a]) => [k, { id: a.id, label: a.label, kind: a.kind, confirm: a.confirm, inputs: a.kind === 'request' ? a.inputs.map(({ example, ...field }) => field) : a.inputs, examples: a.examples, endpoint: a.endpoint, ruleId: a.ruleId }])),
+    actions: Object.fromEntries(Object.entries(schema.actions).map(([k, a]) => [k, { id: a.id, label: a.label, kind: a.kind, confirm: a.confirm, inputs: a.kind === 'request' ? a.inputs.map(({ example, ...field }) => field) : a.inputs, examples: a.examples, mobile: a.mobile, endpoint: a.endpoint, ruleId: a.ruleId }])),
     workflows: schema.workflows,
   };
 }

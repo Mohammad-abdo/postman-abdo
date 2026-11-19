@@ -12,6 +12,23 @@ import { item, shopCollection } from './fixtures/shop';
 const bundle = () => generateApp(shopCollection());
 
 describe('independent request screens', () => {
+  it('generates a catalog and directory from the response fields and nested inputs', () => {
+    const item = (name: string, data: unknown) => ({
+      name,
+      request: { method: 'GET', url: `https://example.test/${name}` },
+      response: [{ code: 200, body: JSON.stringify(data) }],
+    });
+    const { schema } = generateApp({ info: { name: 'Demo' }, item: [
+      item('products', { metadata: { links: [] }, payload: { results: [{ title: 'Coffee', price: 10, category: 'Drinks' }] } }),
+      item('contacts', [{ full_name: 'Nour', email: 'nour@example.test' }]),
+    ] }, { perRequest: true });
+    const [catalog, directory] = Object.values(schema.actions);
+    assert.deepEqual(catalog.mobile, { kind: 'catalog', dataPath: ['payload', 'results'], titleField: 'title', subtitleField: 'category', amountField: 'price' });
+    assert.equal(directory.mobile?.kind, 'directory');
+    assert.deepEqual(directory.mobile?.dataPath, []);
+    assert.ok(!JSON.stringify(catalog.mobile).includes('Coffee'));
+  });
+
   it('uses source order, distinct fields and saved examples even when URLs repeat', () => {
     const url = { raw: 'https://example.test/users?id=2', host: ['example.test'], protocol: 'https', path: ['users'], query: [{ key: 'id', value: '2' }] };
     const request = (id: string, name: string) => ({

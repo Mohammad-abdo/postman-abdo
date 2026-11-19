@@ -68,6 +68,13 @@ export interface BuiltRequest {
 /** Builds the real URL for an endpoint from UI/test values. `resolve` maps `{{var}}` to its value. */
 export function buildRealRequest(e: Endpoint, values: { pathParams?: Record<string, string>; query?: Record<string, string>; queryEntries?: [string, string][]; body?: unknown }, settings: RealSettings, resolve: (name: string) => string | undefined): BuiltRequest {
   const missing: string[] = [];
+  const variable = /\{\{\s*([^{}\s]+)\s*\}\}/g;
+  const resolveValue = (value: string) => value.replace(variable, (raw, name) => {
+    const found = resolve(name);
+    if (found !== undefined) return found;
+    missing.push(name);
+    return raw;
+  });
   const path = e.path
     .split('/')
     .map((seg) => {
@@ -78,7 +85,7 @@ export function buildRealRequest(e: Endpoint, values: { pathParams?: Record<stri
         missing.push(m[1]);
         return seg;
       }
-      return encodeURIComponent(String(v));
+      return encodeURIComponent(resolveValue(String(v)));
     })
     .join('/');
   let origin = settings.baseUrl?.replace(/\/+$/, '') || '';
@@ -90,10 +97,11 @@ export function buildRealRequest(e: Endpoint, values: { pathParams?: Record<stri
   const query: Record<string, string> = {};
   e.query.forEach((q) => q.example !== undefined && q.example !== '' && (query[q.name] = q.example));
   Object.entries(values.query || {}).forEach(([k, v]) => v !== '' && (query[k] = String(v)));
-  const qs = new URLSearchParams(values.queryEntries ?? query).toString();
+  const queryPairs = values.queryEntries ?? Object.entries(query);
+  const qs = new URLSearchParams(queryPairs.map(([key, value]) => [key, resolveValue(value)])).toString();
   const url = `${origin}${path}${qs ? `?${qs}` : ''}`;
   if (/\{\{/.test(origin)) missing.push('base URL variable');
-  return { method: e.method, url, query, body: values.body ?? e.body.example, missing };
+  return { method: e.method, url, query, body: values.body ?? e.body.example, missing: [...new Set(missing)] };
 }
 
 /* ------------------------------ comparison ------------------------------ */

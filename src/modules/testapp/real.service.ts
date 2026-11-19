@@ -55,6 +55,17 @@ export function assertRealEnabled(app: TestApp) {
  * no redirects, scripts off unless enabled, timeout, response-size cap, daily request quota.
  * Never reachable from public share links.
  */
+function folderAuth(items: any[], requestId: string, inherited?: unknown): unknown {
+  for (const item of items) {
+    if (item.id === requestId && item.request) return inherited;
+    if (Array.isArray(item.item)) {
+      const auth = folderAuth(item.item, requestId, item.auth ?? inherited);
+      if (auth !== undefined) return auth;
+    }
+  }
+  return undefined;
+}
+
 export async function executeReal(args: {
   userId: string;
   app: TestApp;
@@ -78,6 +89,8 @@ export async function executeReal(args: {
 
   await limitsService.consumeRequests(args.userId, 1);
   const item = requestToV21Item({ ...(row as unknown as RequestModel), examples: [] }, { forRun: true });
+  const inheritedAuth = folderAuth(ctx.collection.item || [], item.id);
+  if (!item.request.auth && inheritedAuth !== undefined) item.request.auth = inheritedAuth;
   item.request.url = built.url; // string form: postman-runtime parses it itself
   const hasJsonBody = isObj(built.body) && built.method !== 'GET' && built.method !== 'HEAD';
   if (hasJsonBody && (!item.request.body || item.request.body.mode === 'raw')) {

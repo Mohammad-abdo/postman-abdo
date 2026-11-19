@@ -4,7 +4,7 @@ import { CustomRule, evaluateCustomRules } from './custom-rules';
 import { sha256 } from './util';
 import { buildGraph } from './relations';
 import { evaluateRules, ruleSetVersion } from './rules';
-import { AppSchema, Bundle, Endpoint, FieldDef, GenerateOptions } from './types';
+import { AppSchema, Bundle, Endpoint, FieldDef, GenerateOptions, MobilePresentation } from './types';
 
 export const REQUEST_RULE = 'request-interfaces-v1';
 
@@ -28,6 +28,38 @@ function requestInputs(endpoint: Endpoint): FieldDef[] {
   return fields.map((field, index) => ({ ...field, key: `field:${index}` }));
 }
 
+function mobilePresentation(request: Endpoint): MobilePresentation {
+  if (request.method !== 'GET') return { kind: 'form', dataPath: [] };
+  const samples = request.examples.filter((example) => example.code >= 200 && example.code < 300);
+  const candidates: { path: string[]; rows: unknown[] }[] = [];
+  const inspect = (value: unknown, path: string[] = []) => {
+    if (Array.isArray(value)) {
+      candidates.push({ path, rows: value });
+    } else if (value && typeof value === 'object' && path.length < 4) {
+      for (const [key, child] of Object.entries(value).slice(0, 40)) {
+        if (!/metadata|pagination|errors|links/i.test(key)) inspect(child, [...path, key]);
+      }
+    }
+  };
+  for (const { body } of samples) inspect(body);
+  const list = candidates.find(({ rows }) => rows.some((row) => row && typeof row === 'object' && !Array.isArray(row))) || candidates[0];
+  if (!list) return { kind: 'detail', dataPath: [] };
+
+  const keys = [...new Set(list.rows.slice(0, 12).flatMap((row) => row && typeof row === 'object' && !Array.isArray(row) ? Object.keys(row) : []))];
+  const field = (pattern: RegExp) => keys.find((key) => pattern.test(key));
+  const amountField = field(/^(price|unit.?price|amount|total|cost)$/i);
+  const product = field(/^(sku|stock|inventory|product.?name|price|unit.?price)$/i);
+  const directory = field(/^(email|phone|avatar|full.?name|username)$/i);
+  const activity = field(/^(created.?at|updated.?at|timestamp|order.?number|status)$/i);
+  return {
+    kind: product ? 'catalog' : directory ? 'directory' : activity ? 'activity' : 'list',
+    dataPath: list.path,
+    titleField: field(/^(name|title|full.?name|product.?name|label|subject|email|order.?number)$/i),
+    subtitleField: field(/^(description|category|email|role|status|phone)$/i),
+    amountField,
+  };
+}
+
 function requestMapping(model: Bundle['model'], overrides: GenerateOptions['overrides']): Pick<AppSchema, 'nav' | 'screens' | 'actions' | 'dispositions' | 'workflows' | 'review' | 'conflicts' | 'trace'> {
   const result: ReturnType<typeof requestMapping> = { nav: [], screens: [], actions: {}, dispositions: {}, workflows: [], review: [], conflicts: [], trace: [] };
   const titles = new Map(overrides?.map((override) => [override.target, override.decision.title]));
@@ -40,7 +72,7 @@ function requestMapping(model: Bundle['model'], overrides: GenerateOptions['over
     const label = method === 'DELETE' ? 'Delete' : method === 'GET' ? `Fetch ${request.name}` : `Send ${method}`;
     result.nav.push({ id: screen, screen, label: title, requiresAuth: false, folderPath: request.folderPath, order: request.order });
     result.screens.push({ id: screen, title, kind: 'page', sources: [request.key], components: [{ id, type: 'actionPanel', action: id }], ruleId: REQUEST_RULE, provenance: 'documented' });
-    result.actions[id] = { id, endpoint: request.key, label, kind: 'request', inputs: requestInputs(request), examples: request.examples.map(({ name, code }) => ({ name, code })), confirm: method === 'DELETE' ? 'Send this DELETE request?' : undefined, ruleId: REQUEST_RULE, provenance: 'documented' };
+    result.actions[id] = { id, endpoint: request.key, label, kind: 'request', mobile: mobilePresentation(request), inputs: requestInputs(request), examples: request.examples.map(({ name, code }) => ({ name, code })), confirm: method === 'DELETE' ? 'Send this DELETE request?' : undefined, ruleId: REQUEST_RULE, provenance: 'documented' };
     result.dispositions[request.key] = { state: 'mapped', ruleId: REQUEST_RULE, provenance: 'documented' };
   }
   return result;

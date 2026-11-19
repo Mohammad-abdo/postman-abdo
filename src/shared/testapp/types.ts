@@ -177,7 +177,16 @@ export interface Screen {
   provenance: Provenance;
 }
 
+export interface MobilePresentation {
+  kind: 'catalog' | 'directory' | 'activity' | 'list' | 'detail' | 'form';
+  dataPath: string[];
+  titleField?: string;
+  subtitleField?: string;
+  amountField?: string;
+}
+
 export interface ActionDef {
+  mobile?: MobilePresentation;
   id: string;
   label: string;
   endpoint: string;
