@@ -27,7 +27,7 @@ function pluralize(label: string) {
 
 /* ------------------------------------ domain ------------------------------------ */
 
-export function classifyDomain(model: ApiModel, classified: Classified[]): AppDesign['domain'] {
+export function classifyDomain(model: ApiModel, classified: Classified[], prefix: string[] = []): AppDesign['domain'] {
   const scores = Object.fromEntries(Object.keys(DOMAINS).map((d) => [d, 0])) as Record<DomainId, number>;
   const reasons: { domain: DomainId; weight: number; text: string }[] = [];
   const vote = (votes: Partial<Record<DomainId, number>>, factor: number, text: string) => {
@@ -53,8 +53,10 @@ export function classifyDomain(model: ApiModel, classified: Classified[]): AppDe
     ...tokens(model.meta.name),
     ...model.endpoints.flatMap((e) => [...e.folderPath.flatMap(tokens), ...e.segments.filter((s) => !s.startsWith('{')).flatMap(tokens)]),
   ]);
+  const prefixWords = new Set(prefix.flatMap(tokens));
   for (const word of words) {
-    for (const d of DOMAIN_WORDS) if (d.words.test(word)) vote({ [d.domain]: d.weight }, 1, `the word “${word}”`);
+    const where = prefixWords.has(word) ? 2.5 : 1;
+    for (const d of DOMAIN_WORDS) if (d.words.test(word)) vote({ [d.domain]: d.weight }, where, prefixWords.has(word) ? `every path starts with “${word}”` : `the word “${word}”`);
   }
 
   // 4. response fields
@@ -182,10 +184,13 @@ function buildOp(c: Classified, action: ActionDef, label: string, plural: string
   };
 }
 
+const JOB_KINDS: EntityKind[] = ['order', 'delivery', 'trip', 'booking'];
+
 const ID_INPUT = (kind: EntityKind) => new RegExp(`^(${kind}|item|product|course|listing|room|doctor|event|menu|dish|post)_?id$|^id$`, 'i');
 
 /** Groups classified endpoints into entities with their operations and detail-screen buttons. */
 function buildEntities(classified: Classified[], actionOf: (key: string) => ActionDef | undefined) {
+  // (classified is also read below to find sample rows)
   const groups = new Map<string, Classified[]>();
   classified.forEach((c) => c.entity && actionOf(c.endpoint.key) && groups.set(c.entity, [...(groups.get(c.entity) || []), c]));
 
@@ -200,13 +205,39 @@ function buildEntities(classified: Classified[], actionOf: (key: string) => Acti
     entities[id] = { id, kind, label, plural, icon: def.icon, card: cardFor(kind, roles), roles, ops, ctas: [] };
   });
 
+  // `POST /orders/{orderId}/pickup` with no orders list belongs on the list that shows the jobs (assignments, deliveries…).
+  const prefillOf = new Map<string, Record<string, string>>();
+  const sampleOf = (entity: DesignEntity) => {
+    const op = entity.ops.find((o) => o.intent === 'list');
+    const c = op && classified.find((x) => x.endpoint.key === op.endpoint);
+    const row = c && findLists(exampleBody(c.endpoint))[0]?.rows[0];
+    return isObj(row) ? row : {};
+  };
+  for (const orphan of Object.values(entities)) {
+    if (!JOB_KINDS.includes(orphan.kind) || orphan.ops.some((o) => o.intent !== 'action')) continue;
+    const host = Object.values(entities).find((e) => e !== orphan && JOB_KINDS.includes(e.kind) && e.ops.some((o) => o.intent === 'list'));
+    if (!host) continue;
+    const sample = sampleOf(host);
+    for (const op of orphan.ops) {
+      const map: Record<string, string> = {};
+      for (const param of op.pathParams) {
+        const snake = param.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+        const field = [param, snake, `${orphan.id}_id`, `${orphan.id}Id`].find((f) => f in sample) || (isObj(sample[orphan.id]) && 'id' in (sample[orphan.id] as object) ? `${orphan.id}.id` : undefined);
+        if (field) map[param] = `item.${field}`;
+      }
+      if (Object.keys(map).length) prefillOf.set(op.action, map);
+      host.ops.push(op);
+    }
+    delete entities[orphan.id];
+  }
+
   // detail-screen buttons: own actions first, then helpful cross-entity ones
   const all = Object.values(entities);
   const createOf = (kinds: EntityKind[]) => all.flatMap((e) => (kinds.includes(e.kind) ? e.ops.filter((o) => o.intent === 'create') : []))[0];
   const verbOf = (pattern: RegExp) => all.flatMap((e) => e.ops.filter((o) => o.intent === 'action' && pattern.test(o.verb || '')))[0];
   for (const entity of all) {
     for (const op of entity.ops) {
-      if (op.intent === 'action') entity.ctas.push({ label: op.label, action: op.action, style: op.destructive ? 'danger' : 'primary', icon: VERBS.find((v) => v.label === op.verb)?.icon || 'bolt' });
+      if (op.intent === 'action' && op.pathParams.length) entity.ctas.push({ label: op.label, action: op.action, style: op.destructive ? 'danger' : 'primary', icon: VERBS.find((v) => v.label === op.verb)?.icon || 'bolt', prefill: prefillOf.get(op.action) });
     }
     const cross: [EntityKind[], ReturnType<typeof createOf>, string, string][] = [];
     if (['product', 'menu'].includes(entity.kind)) cross.push([['cart'], createOf(['cart', 'order']), 'Add to cart', 'add_shopping_cart'], [['wishlist'], createOf(['wishlist']), 'Save', 'favorite_border']);
@@ -228,6 +259,8 @@ function buildEntities(classified: Classified[], actionOf: (key: string) => Acti
 
 /* ------------------------------------ screens ------------------------------------ */
 
+const SINGULAR_TAB = new Set<EntityKind>(['cart', 'wallet', 'wishlist', 'setting']);
+const rootListOp = (e?: DesignEntity) => e?.ops.find((o) => (o.intent === 'list' || o.intent === 'search') && !o.pathParams.length);
 const listOp = (e?: DesignEntity) => e?.ops.find((o) => o.intent === 'list') || e?.ops.find((o) => o.intent === 'search');
 const singleOp = (e?: DesignEntity) => e?.ops.find((o) => o.intent === 'single' || o.intent === 'me') || e?.ops.find((o) => o.intent === 'detail' && !o.pathParams.length);
 
@@ -288,11 +321,11 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
     if (sections.length >= MAX_HOME_SECTIONS) break;
     if (spec.type === 'greeting' || spec.type === 'search' || spec.type === 'status') {
       if (spec.type === 'search' && !all.some((e) => listOp(e))) continue;
-      if (spec.type === 'status' && !all.some((e) => e.ops.some((o) => /online/i.test(o.verb || '')))) {
+      const toggle = all.flatMap((e) => e.ops).find((o) => /online/i.test(o.verb || '')) || all.filter((e) => /^(status|availability|availabilit|online|shift|duty)$/.test(e.id)).flatMap((e) => e.ops).find((o) => o.method !== 'GET');
+      if (spec.type === 'status' && !toggle) {
         add({ type: 'status', title: 'Ready for orders' });
         continue;
       }
-      const toggle = all.flatMap((e) => e.ops).find((o) => /online/i.test(o.verb || ''));
       add({ type: spec.type, action: toggle?.action });
       continue;
     }
@@ -348,10 +381,13 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   const actionByEndpoint = new Map(Object.values(schema.actions).map((a) => [a.endpoint, a]));
   const actionOf = (key: string) => actionByEndpoint.get(key);
   const prefix = commonPrefix(model.endpoints);
-  const classified = model.endpoints.map((e) => classifyEndpoint(e, prefix));
-  const domain = classifyDomain(model, classified);
+  const academic = model.endpoints.some((e) => e.segments.some((s) => /^(college|faculty|facult|department|semester|lecture|university|course)s?$/i.test(s)));
+  const classified = model.endpoints.map((e) => classifyEndpoint(e, prefix)).map((c) => (academic && c.kind === 'doctor' ? { ...c, kind: 'teacher' as EntityKind } : c));
+  const domain = classifyDomain(model, classified, prefix);
   const def = DOMAINS[domain.id];
-  const entities = buildEntities(classified, actionOf);
+  // In courier and ride apps an "assignment" is a delivery job, not homework.
+  const jobs = domain.id === 'delivery' || domain.id === 'ride';
+  const entities = buildEntities(jobs ? classified.map((c) => (c.kind === 'assignment' ? { ...c, kind: 'delivery' as EntityKind } : c)) : classified, actionOf);
 
   // auth
   const authOp = (intent: Intent) => classified.find((c) => c.intent === intent && actionOf(c.endpoint.key));
@@ -372,13 +408,13 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   const tabs: AppDesign['tabs'] = [{ id: 'home', label: def.homeLabel, icon: 'home', screen: 'home' }];
   const screens: Record<string, DesignScreen> = {};
   const tabbed = new Set<string>();
-  const listEntities = Object.values(entities).filter((e) => listOp(e) && e.kind !== 'user');
+  const listEntities = Object.values(entities).filter((e) => rootListOp(e) && e.kind !== 'user');
   const addBrowseTab = (entity: DesignEntity) => {
     if (tabbed.has(entity.id) || tabs.length >= 4) return;
     tabbed.add(entity.id);
     const screen = `browse.${entity.id}`;
     screens[screen] = { id: screen, kind: 'browse', title: entity.plural, entity: entity.id };
-    tabs.push({ id: screen, label: entity.plural.length > 11 ? entity.label : entity.plural, icon: entity.icon, screen });
+    tabs.push({ id: screen, label: entity.plural.length > 11 || SINGULAR_TAB.has(entity.kind) ? entity.label : entity.plural, icon: entity.icon, screen });
   };
   for (const group of def.tabKinds) {
     const entity = group.flatMap((k) => listEntities.filter((e) => e.kind === k))[0];

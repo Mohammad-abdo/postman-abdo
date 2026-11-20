@@ -10,12 +10,15 @@ const isParam = (segment: string) => /^\{.+\}$/.test(segment);
 /** Generic words that never name an entity on their own (the parent segment does). */
 const GENERIC = /^(items?|list|all|details?|info|data|index|get|show|view|fetch|search|filter|my|mine|current|latest|recent|new|featured|popular|top|home|main|dashboard|overview|summary|count|stats?|statistics|by|for|of|create|add|update|edit|delete|remove|store|save)$/;
 const AUTH = /^(login|log-in|signin|sign-in|sign_in|token|register|signup|sign-up|sign_up|otp|verify|verify-otp|verification|send-otp|resend-otp|logout|log-out|signout|sign-out|refresh|refresh-token|forgot-password|reset-password|password|auth|session)$/;
+/** `unread-count`, `orders-summary`: a figure about the parent resource, not a resource of its own. */
+const FIGURE = /(^|[-_])(count|counts|total|totals|stats?|statistics|summary)$/i;
 const COMPOSITE = /^(home|dashboard|main|overview|index|landing|summary)$/;
 
 export function singular(word: string): string {
   const w = word.toLowerCase();
   if (/ies$/.test(w)) return w.replace(/ies$/, 'y');
   if (/(sses|xes|ches|shes)$/.test(w)) return w.replace(/es$/, '');
+  if (/(us|is|news|ss)$/.test(w)) return w;
   if (/[^s]s$/.test(w)) return w.slice(0, -1);
   return w;
 }
@@ -203,7 +206,7 @@ export function classifyEndpoint(endpoint: Endpoint, prefix: string[]): Classifi
   const verbIsTail = verbDef && last === lastLiteral && literals.length > 1;
 
   // resource = last literal that is a real noun (skip generic words and a trailing verb)
-  const nouns = literals.filter((l, i) => !(verbIsTail && i === literals.length - 1) && !GENERIC.test(singular(l)) && !AUTH.test(l.toLowerCase()));
+  const nouns = literals.filter((l, i) => !(verbIsTail && i === literals.length - 1) && !GENERIC.test(singular(l)) && !FIGURE.test(l) && !AUTH.test(l.toLowerCase()));
   let resource = nouns[nouns.length - 1];
   if (!resource && literals.length) {
     const nameNoun = nameWords.find((w) => kindOf(w) !== 'other');

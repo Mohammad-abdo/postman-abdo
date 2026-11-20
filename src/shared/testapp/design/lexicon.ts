@@ -17,7 +17,7 @@ export interface KindDef {
 }
 
 export const KINDS: KindDef[] = [
-  { kind: 'product', words: /^(product|good|sku|item_?product|منتج|منتجات)$/, label: 'Product', icon: 'shopping_bag', card: 'product', votes: { commerce: 4, food: 0.5 } },
+  { kind: 'product', words: /^(product|good|sku|item_?product|book|ebook|منتج|منتجات|كتاب)$/, label: 'Product', icon: 'shopping_bag', card: 'product', votes: { commerce: 4, food: 0.5 } },
   { kind: 'category', words: /^(category|categorie|cat|department|collection|brand|تصنيف|قسم|اقسام|فئة)$/, label: 'Category', icon: 'category', card: 'chip', votes: { commerce: 2, food: 1, news: 0.5 } },
   { kind: 'cart', words: /^(cart|basket|bag|سلة|عربة)$/, label: 'Cart', icon: 'shopping_cart', card: 'product', votes: { commerce: 4, food: 2 } },
   { kind: 'order', words: /^(order|purchase|طلب|طلبات)$/, label: 'Order', icon: 'receipt_long', card: 'order', votes: { commerce: 1.5, food: 1.5, delivery: 1.5 } },
@@ -65,11 +65,11 @@ export const DOMAIN_WORDS: { domain: DomainId; words: RegExp; weight: number }[]
   { domain: 'food', words: /^(food|restaurant|eat|meal|talabat|مطعم|اكل|طعام)$/, weight: 3 },
   { domain: 'delivery', words: /^(delivery|courier|logistic|logistics|shipping|توصيل|مندوب|شحن)$/, weight: 4 },
   { domain: 'ride', words: /^(ride|taxi|uber|careem|cab|ridesharing|تاكسي)$/, weight: 4 },
-  { domain: 'education', words: /^(student|school|academy|learning|study|studify|edu|education|lms|university|college|مدرسة|تعليم|جامعة)$/, weight: 4 },
+  { domain: 'education', words: /^(college|faculty|department|semester|lecture|student|school|academy|learning|study|edu|education|lms|university|college|مدرسة|تعليم|جامعة)$/, weight: 4 },
   { domain: 'social', words: /^(social|community|network|feed|سوشيال)$/, weight: 3 },
   { domain: 'booking', words: /^(booking|hotel|travel|reservation|حجز|فندق)$/, weight: 3 },
   { domain: 'finance', words: /^(bank|banking|wallet|pay|payment|fintech|finance|بنك|محفظة)$/, weight: 3 },
-  { domain: 'health', words: /^(health|clinic|medical|hospital|doctor|صحة|عيادة|مستشفى)$/, weight: 3 },
+  { domain: 'health', words: /^(health|clinic|medical|hospital|صحة|عيادة|مستشفى)$/, weight: 3 },
   { domain: 'realestate', words: /^(realestate|real-estate|property|properties|عقارات)$/, weight: 3 },
   { domain: 'news', words: /^(news|blog|magazine|media|اخبار)$/, weight: 3 },
   { domain: 'tasks', words: /^(task|todo|crm|helpdesk|support|kanban|tickets)$/, weight: 3 },
@@ -90,7 +90,7 @@ export const VERBS: { words: RegExp; label: string; votes: Partial<Record<Domain
   { words: /^(checkout|pay|purchase|buy)$/, label: 'Checkout', votes: { commerce: 2 }, icon: 'shopping_cart_checkout' },
   { words: /^(rate|review)$/, label: 'Rate', votes: { commerce: 0.5, food: 0.5, ride: 0.5 }, icon: 'star' },
   { words: /^(online|offline|availability|available|toggle|toggle-status|go-online)$/, label: 'Go online', votes: { delivery: 2, ride: 2 }, icon: 'power_settings_new' },
-  { words: /^(read|mark-read|mark_as_read|seen)$/, label: 'Mark as read', votes: {}, icon: 'done_all' },
+  { words: /^(read|read-all|read_all|readall|mark-read|mark_as_read|mark-as-read|mark-all-read|mark-all-as-read|seen)$/, label: 'Mark as read', votes: {}, icon: 'done_all' },
   { words: /^(track|tracking|location|تتبع)$/, label: 'Track', votes: { delivery: 1.5, ride: 1 }, icon: 'my_location' },
 ];
 
@@ -149,7 +149,7 @@ export const DOMAINS: Record<DomainId, DomainDef> = {
     tabKinds: [['trip', 'order'], ['wallet', 'payment', 'transaction']],
     homeLabel: 'Home',
   },
-  education: { id: 'education', label: 'Learning app', tagline: 'Learn something new today', icon: 'school', theme: light('#4F46E5', '#F59E0B', 'playful', 20), tabKinds: [['course', 'lesson'], ['schedule', 'assignment', 'quiz', 'grade'], ['notification']], homeLabel: 'Home' },
+  education: { id: 'education', label: 'Learning app', tagline: 'Learn something new today', icon: 'school', theme: light('#4F46E5', '#F59E0B', 'playful', 20), tabKinds: [['course', 'lesson', 'product'], ['schedule', 'assignment', 'quiz', 'grade'], ['notification']], homeLabel: 'Home' },
   social: { id: 'social', label: 'Social network', tagline: 'Share your moments', icon: 'diversity_3', theme: light('#E1306C', '#833AB4', 'playful', 18), tabKinds: [['post'], ['message'], ['notification']], homeLabel: 'Feed' },
   booking: { id: 'booking', label: 'Bookings', tagline: 'Find your next stay', icon: 'hotel', theme: light('#E11D48', '#0EA5E9', 'soft', 18), tabKinds: [['listing'], ['booking'], ['wishlist']], homeLabel: 'Explore' },
   finance: {

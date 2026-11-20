@@ -147,8 +147,11 @@ export interface DesignEntity {
   card: CardStyle;
   roles: FieldRoles;
   ops: DesignOp[];
-  /** Buttons on an item's detail screen, possibly calling another entity's endpoint (e.g. product → Add to cart). */
-  ctas: { label: string; action: string; style: 'primary' | 'secondary' | 'danger'; icon: string; prefill?: Record<string, 'item.id'> }[];
+  /**
+   * Buttons on an item's detail screen, possibly calling another entity's endpoint (e.g. product → Add to cart).
+   * `prefill` maps an input name to `item.<field>` of the shown item.
+   */
+  ctas: { label: string; action: string; style: 'primary' | 'secondary' | 'danger'; icon: string; prefill?: Record<string, string> }[];
 }
 
 export type SectionType = 'greeting' | 'search' | 'hero' | 'chips' | 'grid' | 'rail' | 'list' | 'stats' | 'map' | 'status' | 'balance' | 'shortcuts' | 'feed';

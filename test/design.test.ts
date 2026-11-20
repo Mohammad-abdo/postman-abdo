@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { generateApp } from '../src/shared/testapp/generate';
 import { fieldRoles } from '../src/shared/testapp/design/entities';
 import { arabicStoreCollection, deliveryCollection, genericCollection, rideCollection, socialCollection, storeCollection, studentCollection } from './fixtures/domains';
-import { shopCollection } from './fixtures/shop';
+import { item, shopCollection } from './fixtures/shop';
 
 const design = (collection: unknown) => generateApp(collection, { perRequest: true }).schema.design!;
 const sectionTypes = (d: ReturnType<typeof design>) => d.screens.home.sections!.map((s) => s.type);
@@ -79,6 +79,50 @@ describe('app design: domain detection', () => {
     assert.deepEqual(a.design, b.design);
     const reachable = new Set([...Object.values(a.design!.entities).flatMap((e) => e.ops.map((o) => o.action)), ...a.design!.looseActions, ...Object.values(a.design!.auth).filter((v) => typeof v === 'string')]);
     for (const id of Object.keys(a.actions)) assert.ok(reachable.has(id), `${a.actions[id].endpoint} is reachable`);
+  });
+});
+
+describe('app design: real-world collection shapes', () => {
+  const ok = (body: unknown) => ({ examples: [{ code: 200, body }] });
+  const courier = () => ({
+    info: { name: 'Studify - Mobile Delivery API' },
+    auth: { type: 'bearer' },
+    item: [
+      item('Profile', 'GET', '{{base_url}}/mobile/delivery/profile', ok({ data: { id: 1, name: 'Ali' } })),
+      item('Status', 'PUT', '{{base_url}}/mobile/delivery/status', { body: { is_online: true }, ...ok({ success: true }) }),
+      item('Assignments', 'GET', '{{base_url}}/mobile/delivery/assignments', ok({ data: [{ id: 5, order_id: 77, status: 'assigned', address: 'Giza' }] })),
+      item('Pickup', 'POST', '{{base_url}}/mobile/delivery/orders/:orderId/pickup', ok({ success: true })),
+      item('Deliver', 'POST', '{{base_url}}/mobile/delivery/orders/:orderId/deliver', ok({ success: true })),
+      item('Unread', 'GET', '{{base_url}}/mobile/delivery/notifications/unread-count', ok({ count: 2 })),
+      item('Notifications', 'GET', '{{base_url}}/mobile/delivery/notifications', ok({ data: [{ id: 1, title: 'Hi' }] })),
+      item('Read all', 'PUT', '{{base_url}}/mobile/delivery/notifications/read-all', ok({ success: true })),
+    ],
+  });
+
+  it('reads the app from its path prefix, not the brand name, and puts job actions on the jobs list', () => {
+    const d = design(courier());
+    assert.equal(d.domain.id, 'delivery');
+    const jobs = d.entities.assignment;
+    assert.equal(jobs.kind, 'delivery', 'assignments in a courier app are delivery jobs');
+    assert.deepEqual(jobs.ctas.map((c) => c.label), ['Picked up', 'Mark delivered']);
+    assert.deepEqual(jobs.ctas[0].prefill, { orderId: 'item.order_id' });
+    assert.ok(!d.entities.order, 'the action-only orders entity is merged away');
+    assert.ok(d.entities.status && !d.entities.statu, '“status” is not singularised');
+    assert.ok(!d.entities.unread_count, 'counters belong to their parent resource');
+    assert.deepEqual(d.entities.notification.ctas, [], '“read all” is a list action, not an item button');
+    assert.ok(d.screens.home.sections!.find((s) => s.type === 'status')?.action, 'PUT /status drives the online toggle');
+  });
+
+  it('treats “doctor” as a lecturer in a university app', () => {
+    const d = design({
+      info: { name: 'Studify Mobile Doctor' },
+      item: [
+        item('Profile', 'GET', '{{u}}/mobile/doctor/profile', ok({ data: { id: 1, name: 'Dr. Hany' } })),
+        item('Colleges', 'GET', '{{u}}/mobile/doctor/colleges', ok({ data: [{ id: 1, name: 'Engineering' }] })),
+        item('Books', 'GET', '{{u}}/mobile/doctor/books', ok({ data: [{ id: 1, title: 'Physics', price: 120 }] })),
+      ],
+    });
+    assert.notEqual(d.domain.id, 'health');
   });
 });
 
