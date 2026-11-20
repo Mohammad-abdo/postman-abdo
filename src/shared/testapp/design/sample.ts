@@ -51,7 +51,7 @@ export function sampleRows(kind: EntityKind, domain: DomainId, label: string, co
     case 'category':
       return (CATEGORIES[domain] || CATEGORIES.commerce!).slice(0, count).map((name, i) => ({ id: id(i), name }));
     case 'vehicle':
-      return VEHICLES.map((v, i) => ({ id: id(i), name: `${v.make} ${v.model}`, ...v, is_default: i === 0 }));
+      return VEHICLES.map((v, i) => ({ id: id(i), name: `${v.make} ${v.model}`, subtitle: `${v.year} · ${v.color} · ${v.plate}`, ...v, is_default: i === 0 }));
     case 'banner':
     case 'coupon':
       return BANNERS.map((b, i) => ({ id: id(i), ...b }));

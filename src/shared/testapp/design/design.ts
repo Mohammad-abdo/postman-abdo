@@ -394,7 +394,10 @@ function addSamples(entities: Record<string, DesignEntity>, domain: DomainId, cl
         op.roles = { ...fieldRoles(op.sample[0] as Record<string, unknown>), ...op.roles };
         continue;
       }
-      if (op.intent !== 'list' || op.sample) continue;
+      if (op.intent !== 'list' || op.sample || op.verb) continue;
+      // only entities named after their kind get demo rows ("compatibility" is not a product list)
+      const named = entity.id.split('_').some((w) => kindOf(w) === entity.kind);
+      if (!named) continue;
       const rows = sampleRows(entity.kind, domain, entity.label);
       if (!rows) continue;
       op.sample = rows;
@@ -422,6 +425,7 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   const jobs = domain.id === 'delivery' || domain.id === 'ride';
   const entities = buildEntities(jobs ? classified.map((c) => (c.kind === 'assignment' ? { ...c, kind: 'delivery' as EntityKind } : c)) : classified, actionOf);
 
+  if (domain.id === 'automotive') Object.values(entities).forEach((e) => e.kind === 'product' && (e.icon = 'car_repair'));
   enrichLists(entities, classified, actionOf);
   buildRelations(entities);
   addSamples(entities, domain.id, classified);

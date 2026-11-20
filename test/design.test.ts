@@ -126,6 +126,86 @@ describe('app design: real-world collection shapes', () => {
   });
 });
 
+describe('app design: car services collection (OTP sign-in, filters, categories)', () => {
+  const zone = () => ({
+    info: { name: 'ZoneCar Customer API' },
+    auth: { type: 'bearer' },
+    item: [
+      { name: '00 Authentication', item: [
+        { name: 'A. Register (new customer)', item: [
+          item('A1. Register - Request OTP', 'POST', '{{baseUrl}}/api/customer/auth/otp/request', { auth: 'noauth', body: { phone: '{{registrationPhone}}', registration: { name: '{{regName}}', email: '{{regEmail}}', acceptTerms: true } } }),
+          item('A3. Register - Verify OTP', 'POST', '{{baseUrl}}/api/customer/auth/otp/verify', { auth: 'noauth', body: { phone: '{{registrationPhone}}', code: '{{otpCode}}' } }),
+        ] },
+        { name: 'B. Login (existing customer)', item: [
+          item('B1. Login - Request OTP', 'POST', '{{baseUrl}}/api/customer/auth/otp/request', { auth: 'noauth', body: { phone: '{{phone}}' } }),
+          item('B2. Resend OTP - Login', 'POST', '{{baseUrl}}/api/customer/auth/otp/request', { auth: 'noauth', body: { phone: '{{phone}}' } }),
+          item('B3. Login - Verify OTP', 'POST', '{{baseUrl}}/api/customer/auth/otp/verify', { auth: 'noauth', body: { phone: '{{phone}}', code: '{{otpCode}}' } }),
+          item('B4. Get My Profile', 'GET', '{{baseUrl}}/api/customer/auth/me'),
+        ] },
+      ] },
+      { name: '01 Vehicles (garage)', item: [
+        item('List my vehicles', 'GET', '{{baseUrl}}/api/customer/vehicles?page=1&limit=20'),
+        item('Create vehicle', 'POST', '{{baseUrl}}/api/customer/vehicles', { body: { makeId: '{{makeId}}', year: 2021 } }),
+      ] },
+      { name: '03 Towing', item: [
+        item('List my tow requests', 'GET', '{{baseUrl}}/api/customer/towing/requests'),
+        item('Cancel tow request', 'POST', '{{baseUrl}}/api/customer/towing/requests/{{towRequestId}}/cancel'),
+      ] },
+      { name: 'Spare Parts', item: [
+        item('List Original categories', 'GET', '{{baseUrl}}/api/customer/categories?section=SPARE_PARTS&quality=ORIGINAL'),
+        item('List subcategories', 'GET', '{{baseUrl}}/api/customer/categories?section=SPARE_PARTS&parentId={{originalCategoryId}}&quality=ORIGINAL'),
+        item('Products by category', 'GET', '{{baseUrl}}/api/customer/products?section=SPARE_PARTS&quality=ORIGINAL&categoryId={{originalCategoryId}}&inStock=true&minPrice=0&maxPrice=100000&sort=priceAsc&limit=20'),
+        item('List products (search, filters, sort)', 'GET', '{{baseUrl}}/api/customer/products?section=SPARE_PARTS&sort=relevance&limit=20'),
+        item('Product details', 'GET', '{{baseUrl}}/api/customer/products/{{productId}}'),
+        item('Add to favorites', 'PUT', '{{baseUrl}}/api/customer/favorites/products/{{productId}}'),
+        item('Add to cart', 'POST', '{{baseUrl}}/api/customer/cart/items', { body: { productId: '{{productId}}', quantity: 1 } }),
+      ] },
+      { name: 'Maintenance Packages — Customer Journey', item: [item('1. List Maintenance Packages', 'GET', '{{baseUrl}}/api/customer/products?type=MAINTENANCE_PACKAGE&limit=50')] },
+    ],
+  });
+  const generated = () => generateApp(zone(), { perRequest: true }).schema;
+  const endpointOf = (schema: ReturnType<typeof generated>, id?: string) => (id ? schema.actions[id].endpoint : undefined);
+
+  it('is a car-services app with phone + code sign-in and a separate sign-up', () => {
+    const schema = generated();
+    const d = schema.design!;
+    assert.equal(d.domain.id, 'automotive');
+    assert.deepEqual(d.auth.flows!.login!.map((s) => s.kind), ['identify', 'otp']);
+    assert.deepEqual(d.auth.flows!.register!.map((s) => s.kind), ['details', 'otp']);
+    assert.match(schema.actions[d.auth.flows!.register![0].action].inputs.map((f) => f.name).join(','), /registration/);
+    assert.ok(d.auth.me, '/auth/me is the profile, not a login');
+    assert.ok(d.auth.flows!.login![1].resend);
+  });
+
+  it('merges every request on /products into one list with real filters', () => {
+    const d = generated().design!;
+    const list = d.entities.product.ops[0];
+    assert.equal(list.intent, 'list');
+    const kinds = Object.fromEntries(list.filters!.map((f) => [f.name, f.kind]));
+    assert.deepEqual(kinds, { section: 'enum', quality: 'enum', categoryId: 'ref', inStock: 'toggle', minPrice: 'min', maxPrice: 'max', sort: 'sort', type: 'enum' });
+    assert.deepEqual(list.filters!.find((f) => f.name === 'sort')!.options!.map((o) => o.label), ['Price: low to high', 'Relevance']);
+    assert.ok(list.variants!.length >= 3);
+    assert.ok(list.sample?.length, 'no saved responses: the list carries sample rows');
+  });
+
+  it('opens a category as a page of its products and sub-categories', () => {
+    const d = generated().design!;
+    const rel = d.entities.category.relations!;
+    assert.ok(rel.find((r) => r.entity === 'product' && r.param === 'categoryId' && r.via === 'query'));
+    assert.ok(rel.find((r) => r.self && r.param === 'parentId'));
+  });
+
+  it('turns feature folders into services and favorites into a save button', () => {
+    const d = generated().design!;
+    const services = d.screens.home.sections!.find((s) => s.type === 'shortcuts')!.items!;
+    assert.deepEqual(services.map((s) => s.label), ['Vehicles', 'Towing', 'Spare Parts', 'Maintenance Packages']);
+    assert.deepEqual(services.find((s) => s.label === 'Maintenance Packages')!.values, { type: 'MAINTENANCE_PACKAGE' });
+    assert.ok(d.entities.towing_request, '“requests” takes its meaning from “towing”');
+    assert.ok(d.entities.product.ctas.some((c) => c.label === 'Save to favorites'));
+    assert.ok(!d.entities.product.ctas.some((c) => c.label === 'Edit'), 'PUT /favorites/products/{id} is not an edit');
+  });
+});
+
 describe('app design: field roles', () => {
   it('maps common API field names to visual roles, including nested people and translated text', () => {
     const roles = fieldRoles({ id: 4, name: { en: 'Pizza', ar: 'بيتزا' }, price: '12.50', images: ['https://x/p.png'], customer: { name: 'Mona' }, status: 'new', created_at: '2026-01-01' });
