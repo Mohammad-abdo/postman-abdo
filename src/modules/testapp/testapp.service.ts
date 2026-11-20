@@ -4,6 +4,7 @@ import { BadRequest, Conflict, Forbidden, NotFound } from '../../core/errors/htt
 import { diffContracts } from '../../shared/testapp/contract';
 import { redact } from '../../shared/testapp/ai';
 import { generateApp, savedResponse } from '../../shared/testapp/generate';
+import { withDesign } from '../../shared/testapp/design/design';
 import { MockCtx, MockState, createInitialState, invoke } from '../../shared/testapp/mock';
 import { CustomTest, TestResult, compareRuns, coverageOf, createMockProbe, runMockTests } from '../../shared/testapp/testing';
 import { validateRule } from '../../shared/testapp/custom-rules';
@@ -142,7 +143,7 @@ export const testAppService = {
     const v = await version(id, app.currentVersionId);
     const overrides = await prisma.testAppOverride.findMany({ where: { testAppId: id } });
     const collection = await prisma.collection.findUnique({ where: { id: app.collectionId }, select: { id: true, name: true, deletedAt: true } });
-    return { app, version: { id: v.id, version: v.version, sourceHash: v.sourceHash, contractVersion: v.contractVersion, ruleSetVersion: v.ruleSetVersion, seed: v.seed, createdAt: v.createdAt, stats: v.stats }, schema: v.schema, warnings: (v.model as any).warnings, overrides, collection };
+    return { app, version: { id: v.id, version: v.version, sourceHash: v.sourceHash, contractVersion: v.contractVersion, ruleSetVersion: v.ruleSetVersion, seed: v.seed, createdAt: v.createdAt, stats: v.stats }, schema: withDesign(v.schema as any, v.model), warnings: (v.model as any).warnings, overrides, collection };
   },
 
   async versionPart(userId: string, id: string, n: number, part: string) {

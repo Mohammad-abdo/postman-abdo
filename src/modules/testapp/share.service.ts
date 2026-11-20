@@ -6,6 +6,7 @@ import { env } from '../../config/env';
 import { prisma } from '../../core/database/prisma';
 import { Forbidden, HttpError, NotFound, Unauthorized } from '../../core/errors/http-error';
 import { publicSchema } from '../../shared/testapp/public';
+import { withDesign } from '../../shared/testapp/design/design';
 import { AppSchema } from '../../shared/testapp/types';
 import { sha256 } from '../../shared/testapp/util';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
@@ -111,9 +112,9 @@ export const shareService = {
   async schema(token: string, unlock?: string) {
     const share = await shareService.resolve(token);
     shareService.assertUnlocked(share, unlock);
-    const v = await prisma.testAppVersion.findUnique({ where: { id: share.versionId }, select: { schema: true } });
+    const v = await prisma.testAppVersion.findUnique({ where: { id: share.versionId }, select: { schema: true, model: true } });
     if (!v) throw gone();
-    return publicSchema(v.schema as unknown as AppSchema);
+    return publicSchema(withDesign(v.schema as unknown as AppSchema, v.model));
   },
 
   async openSession(token: string, unlock: string | undefined, seed?: number) {

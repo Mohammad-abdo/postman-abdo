@@ -423,3 +423,13 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   };
 }
 
+
+/** Versions saved before app designs existed get one computed on read; a failure never breaks loading. */
+export function withDesign<T extends Pick<AppSchema, 'actions' | 'app'> & { design?: AppDesign }>(schema: T, model: unknown): T {
+  if (!schema || schema.design || !model) return schema;
+  try {
+    return { ...schema, design: buildDesign(model as ApiModel, schema) };
+  } catch {
+    return schema;
+  }
+}
