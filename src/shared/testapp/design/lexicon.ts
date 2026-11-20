@@ -89,9 +89,12 @@ export const VERBS: { words: RegExp; label: string; votes: Partial<Record<Domain
   { words: /^(submit|answer|attempt|تسليم_الواجب)$/, label: 'Submit', votes: { education: 1.5 }, icon: 'send' },
   { words: /^(like|unlike|follow|unfollow|share|react)$/, label: 'Like', votes: { social: 2 }, icon: 'favorite' },
   { words: /^(checkout|pay|purchase|buy)$/, label: 'Checkout', votes: { commerce: 2 }, icon: 'shopping_cart_checkout' },
-  { words: /^(rate|review)$/, label: 'Rate', votes: { commerce: 0.5, food: 0.5, ride: 0.5 }, icon: 'star' },
+  { words: /^(rate|review|rating|feedback)$/, label: 'Rate', votes: { commerce: 0.5, food: 0.5, ride: 0.5 }, icon: 'star' },
   { words: /^(online|offline|availability|available|toggle|toggle-status|go-online)$/, label: 'Go online', votes: { delivery: 2, ride: 2 }, icon: 'power_settings_new' },
   { words: /^(read|read-all|read_all|readall|mark-read|mark_as_read|mark-as-read|mark-all-read|mark-all-as-read|seen)$/, label: 'Mark as read', votes: {}, icon: 'done_all' },
+  { words: /^(retry|try-again|retry-payment)$/, label: 'Try again', votes: {}, icon: 'swap_horiz' },
+  { words: /^(escalate|support|help|report|dispute)$/, label: 'Contact support', votes: {}, icon: 'forum' },
+  { words: /^(default|set-default|make-default|primary|set_default)$/, label: 'Set as default', votes: {}, icon: 'check_circle' },
   { words: /^(track|tracking|location|تتبع)$/, label: 'Track', votes: { delivery: 1.5, ride: 1 }, icon: 'my_location' },
 ];
 
@@ -147,7 +150,7 @@ export const DOMAINS: Record<DomainId, DomainDef> = {
     tagline: 'Everything your car needs',
     icon: 'directions_car',
     theme: { mode: 'light', primary: '#1E40AF', accent: '#F59E0B', background: '#F2F4F8', surface: '#FFFFFF', text: '#0B1220', muted: '#64748B', radius: 16, style: 'bold' },
-    tabKinds: [['product', 'category'], ['vehicle'], ['order', 'trip', 'cart']],
+    tabKinds: [['product', 'category'], ['vehicle'], ['cart', 'order', 'trip']],
     homeLabel: 'Home',
   },
   ride: {

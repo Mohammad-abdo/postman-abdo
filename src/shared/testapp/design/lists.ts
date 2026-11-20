@@ -8,6 +8,18 @@ import type { DesignEntity, DesignFilter, DesignOp, DesignRelation } from './des
 import { humanize } from './lexicon';
 import { Classified, singular } from './entities';
 
+/** Reference data (`/vehicles/catalog`, `/config`, `/qualities`): fills dropdowns, never a tab or a home section. */
+const LOOKUP = /^(catalog|config|configuration|setting|settings|section|quality|qualities|requirement|option|lookup|meta|metadata|enum|type|event|marketplace|session|version|health|status_list)$/;
+export const isLookup = (e: DesignEntity) => e.kind === 'setting' || (LOOKUP.test(e.id) && e.ops.every((o) => o.method === 'GET'));
+
+const SERVICE_ICONS: [RegExp, string][] = [
+  [/maint|service|repair|workshop/i, 'build'],
+  [/insur|policy|warrant/i, 'verified_user'],
+  [/tow|roadside|rescue/i, 'local_shipping'],
+  [/spare|part/i, 'car_repair'],
+  [/vehicle|car|garage/i, 'directions_car'],
+];
+
 const PAGING = /^(page|limit|offset|per_?page|page_?size|pagesize|size|cursor|take|skip|after)$/i;
 const SEARCH = /^(q|query|search|keyword|keywords|term|s)$/i;
 const SORT = /^(sort|sort_?by|sortby|order_?by|orderby|ordering|order)$/i;
@@ -141,7 +153,7 @@ export function folderServices(classified: Classified[], entities: Record<string
     list.forEach((c) => c.entity && entities[c.entity] && counts.set(c.entity, (counts.get(c.entity) || 0) + 1));
     const main = [...counts.entries()]
       .map(([id, n]) => [entities[id], n] as const)
-      .filter(([e]) => e.ops.some((o) => o.intent === 'list' && !o.pathParams.length) && !['user', 'banner', 'cart', 'notification'].includes(e.kind))
+      .filter(([e]) => e.ops.some((o) => o.intent === 'list' && !o.pathParams.length) && !['user', 'banner', 'cart', 'notification'].includes(e.kind) && !isLookup(e))
       .sort((a, b) => b[1] - a[1])[0]?.[0];
     if (!main) continue;
     // the folder's own request for that list says which slice it is (type=MAINTENANCE_PACKAGE)
@@ -150,7 +162,7 @@ export function folderServices(classified: Classified[], entities: Record<string
     const values = Object.fromEntries((own?.endpoint.query || []).filter((q) => enums.has(q.name) && literal(q.example)).map((q) => [q.name, q.example!]));
     const label = cleanFolder(folder) || main.plural;
     if (items.some((i) => i.label === label)) continue;
-    items.push({ label, icon: main.icon, entity: main.id, values: Object.keys(values).length ? values : undefined });
+    items.push({ label, icon: SERVICE_ICONS.find(([re]) => re.test(label))?.[1] || main.icon, entity: main.id, values: Object.keys(values).length ? values : undefined });
   }
   return items.slice(0, 8);
 }

@@ -2,7 +2,7 @@ import { ActionDef, ApiModel, AppSchema } from '../types';
 import { AppDesign, CardStyle, DesignEntity, DesignOp, DesignScreen, DesignSection, DomainId, EntityKind, FieldRoles, Intent, SectionType } from './design.types';
 import { Classified, classifyEndpoint, commonPrefix, exampleBody, fieldRoles, findLists, findRecord, isObj, kindOf, singular, tokens } from './entities';
 import { buildAuth } from './auth';
-import { buildRelations, enrichLists, folderServices } from './lists';
+import { buildRelations, enrichLists, folderServices, isLookup } from './lists';
 import { sampleProfile, sampleRows } from './sample';
 import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './lexicon';
 
@@ -246,6 +246,7 @@ function buildEntities(classified: Classified[], actionOf: (key: string) => Acti
       const idInput = target && actionOf(op.endpoint)?.inputs.find((f) => ID_INPUT(entity.kind).test(f.name));
       entity.ctas.push({ label, action: op.action, style: entity.ctas.length ? 'secondary' : 'primary', icon, prefill: idInput ? { [idInput.name]: 'item.id' } : undefined });
     }
+    entity.ctas = entity.ctas.filter((c, i) => entity.ctas.findIndex((x) => x.label === c.label) === i);
     const update = entity.ops.find((o) => o.intent === 'update');
     if (update) entity.ctas.push({ label: 'Edit', action: update.action, style: 'secondary', icon: 'edit' });
     const remove = entity.ops.find((o) => o.intent === 'delete');
@@ -292,7 +293,7 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
   const used = new Set<string>();
   const all = Object.values(entities);
   const byKinds = (kinds: EntityKind[], need: 'list' | 'single') =>
-    kinds.flatMap((k) => all.filter((e) => e.kind === k && !used.has(e.id) && (need === 'list' ? listOp(e) : singleOp(e))))[0];
+    kinds.flatMap((k) => all.filter((e) => e.kind === k && !used.has(e.id) && !isLookup(e) && (need === 'list' ? listOp(e) : singleOp(e))).sort((a, b) => b.ops.length - a.ops.length))[0];
   const add = (section: Omit<DesignSection, 'id'>) => sections.push({ ...section, id: `home.${sections.length}` });
 
   // A /home or /dashboard endpoint returning several lists describes the home screen best: use it first.
@@ -369,7 +370,7 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
   for (const entity of all) {
     if (sections.length >= MAX_HOME_SECTIONS) break;
     const op = listOp(entity);
-    if (!op || op.pathParams.length || used.has(entity.id) || NOT_ON_HOME.has(entity.kind)) continue;
+    if (!op || op.pathParams.length || used.has(entity.id) || NOT_ON_HOME.has(entity.kind) || isLookup(entity)) continue;
     used.add(entity.id);
     const type: SectionType = entity.card === 'product' ? 'grid' : ['venue', 'course', 'event', 'person'].includes(entity.card) ? 'rail' : 'list';
     add({ type, title: entity.plural, entity: entity.id, action: op.action, dataPath: op.dataPath, roles: op.roles, card: entity.card, limit: type === 'list' ? 4 : 6, seeAll: tabFor(entity.id) });
@@ -435,7 +436,7 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   const tabs: AppDesign['tabs'] = [{ id: 'home', label: def.homeLabel, icon: 'home', screen: 'home' }];
   const screens: Record<string, DesignScreen> = {};
   const tabbed = new Set<string>();
-  const listEntities = Object.values(entities).filter((e) => rootListOp(e) && e.kind !== 'user');
+  const listEntities = Object.values(entities).filter((e) => rootListOp(e) && e.kind !== 'user' && !isLookup(e)).sort((a, b) => b.ops.length - a.ops.length);
   const addBrowseTab = (entity: DesignEntity) => {
     if (tabbed.has(entity.id) || tabs.length >= 4) return;
     tabbed.add(entity.id);
