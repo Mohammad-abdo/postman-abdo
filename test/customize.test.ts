@@ -40,6 +40,35 @@ describe('design customizations', () => {
   });
 });
 
+describe('design customizations: code, devices and section looks', () => {
+  const base = { v: 1 };
+  const parse = (patch: object) => customizationSchema.safeParse({ ...base, ...patch }).success;
+
+  it('accepts custom CSS, code blocks, styled sections and a device', () => {
+    assert.equal(parse({
+      css: '.na-tabs { border-radius: 0 } .na-banner { background: url(https://cdn.example.com/bg.png) }',
+      theme: { iconStyle: 'twotone', template: 'Ocean Glass' },
+      device: { model: 'fold', frame: '#C8A27C', orientation: 'landscape', cutout: 'notch', frameless: false },
+      home: [
+        { id: 'c1', type: 'code', entity: 'product', action: 'send.x', code: { html: '<div id="n"></div>', css: '#n{color:red}', js: 'app.onData(r => n.textContent = r.length)', height: 120 } },
+        { id: 'f1', type: 'form', action: 'send.y', title: 'Contact us' },
+        { id: 'v1', type: 'video', video: 'https://cdn.example.com/a.mp4', style: { background: '#111111', color: '#FFFFFF', padding: 16, radius: 20, align: 'center', shadow: true, fullBleed: true } },
+      ],
+    }), true);
+  });
+
+  it('rejects CSS that loads or escapes, and unsafe device or style values', () => {
+    assert.equal(parse({ css: '@import url(https://evil.example.com/x.css);' }), false);
+    assert.equal(parse({ css: '.a { background: url(http://insecure/x.png) }' }), false);
+    assert.equal(parse({ css: '.a { background: url(data:image/svg+xml;base64,AAA) }' }), false);
+    assert.equal(parse({ css: '</style><script>alert(1)</script>' }), false);
+    assert.equal(parse({ css: '.a { behavior: url(x.htc) }' }), false);
+    assert.equal(parse({ device: { model: 'nokia3310' } }), false);
+    assert.equal(parse({ home: [{ id: 'x', type: 'text', style: { background: 'red;position:fixed' } }] }), false);
+    assert.equal(parse({ home: [{ id: 'x', type: 'video', video: 'javascript:alert(1)' }] }), false);
+  });
+});
+
 describe('app design: more kinds of business, each with its own look', () => {
   it('recognises gyms, salons, travel, jobs, streaming and business tools', () => {
     const cases: [string, unknown[], string][] = [
