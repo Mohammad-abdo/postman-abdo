@@ -7,7 +7,15 @@
 import { z } from 'zod';
 import { FONTS } from './look';
 
-const MAX_BYTES = 64 * 1024;
+const MAX_BYTES = 192 * 1024;
+const CODE_MAX = 30_000;
+
+/**
+ * Custom CSS is scoped to the app by the renderer (native nesting under `.na-phone`). It may not
+ * pull in other resources except https images, and may not break out of its <style> element.
+ */
+const UNSAFE_CSS = /@import|expression\s*\(|javascript:|vbscript:|behavior\s*:|-moz-binding|<\/?\s*style|<\/?\s*script|url\(\s*['"]?\s*(?!https:)/i;
+const css = z.string().max(CODE_MAX).refine((v) => !UNSAFE_CSS.test(v), 'CSS may not use @import, scripts or non-https url()');
 
 const color = z.string().regex(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i, 'Use a hex colour like #1E40AF');
 const text = (max: number) => z.string().max(max);
@@ -17,7 +25,7 @@ const id = z.string().regex(/^[\w.:#\- ]{1,160}$/);
 const roles = z.record(text(30), text(120));
 const values = z.record(text(60), text(200));
 
-const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer'] as const;
+const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video'] as const;
 const CARDS = ['product', 'venue', 'course', 'order', 'person', 'post', 'trip', 'transaction', 'article', 'event', 'banner', 'chip', 'tile'] as const;
 const STYLES = ['soft', 'bold', 'minimal', 'playful', 'glass', 'elegant', 'brutal', 'neon', 'classic'] as const;
 
@@ -38,6 +46,25 @@ const section = z
     image: httpsUrl.optional(),
     target: z.object({ entity: id.optional(), action: id.optional(), page: id.optional(), values: values.optional() }).strict().optional(),
     items: z.array(z.object({ label: text(40), icon, entity: id.optional(), action: id.optional(), values: values.optional() }).strict()).max(16).optional(),
+    /** Per-section look. */
+    style: z
+      .object({
+        background: color,
+        color,
+        padding: z.number().min(0).max(48),
+        radius: z.number().min(0).max(40),
+        align: z.enum(['start', 'center', 'end']),
+        shadow: z.boolean(),
+        fullBleed: z.boolean(),
+        hideTitle: z.boolean(),
+      })
+      .partial()
+      .strict()
+      .optional(),
+    /** `code` sections: HTML/CSS/JS run in a sandboxed frame (no access to the page, cookies or storage). */
+    code: z.object({ html: z.string().max(CODE_MAX), css: z.string().max(CODE_MAX), js: z.string().max(CODE_MAX), height: z.number().int().min(40).max(2000) }).partial().strict().optional(),
+    /** `video` sections: an https video file. */
+    video: httpsUrl.optional(),
   })
   .strict();
 
@@ -62,12 +89,30 @@ export const customizationSchema = z
         headerStyle: z.enum(['large', 'centered', 'compact']),
         cardStyle: z.enum(['shadow', 'outline', 'flat', 'glass']),
         scale: z.number().min(0.8).max(1.3),
+        iconStyle: z.enum(['filled', 'outlined', 'rounded', 'sharp', 'twotone']),
+        template: text(60),
       })
       .partial()
       .strict()
       .optional(),
     brand: z.object({ name: text(60), tagline: text(120), icon, logo: z.union([httpsUrl, z.literal('')]) }).partial().strict().optional(),
     dir: z.enum(['ltr', 'rtl']).optional(),
+    /** Custom CSS for the whole app (scoped to it). */
+    css: css.optional(),
+    /** The phone the design is presented on (viewers can still switch). */
+    device: z
+      .object({
+        model: z.enum(['iphone16pm', 'iphone15', 'iphonese', 'pixel8', 'galaxy', 'fold', 'ipadmini', 'tablet', 'custom']),
+        frame: color,
+        orientation: z.enum(['portrait', 'landscape']),
+        cutout: z.enum(['auto', 'island', 'notch', 'punch', 'none']),
+        frameless: z.boolean(),
+        width: z.number().int().min(280).max(1400),
+        height: z.number().int().min(400).max(1600),
+      })
+      .partial()
+      .strict()
+      .optional(),
     tabs: z.array(z.object({ id, label: text(30), icon, screen: text(160), hidden: z.boolean().optional() }).strict()).max(8).optional(),
     home: z.array(section).max(40).optional(),
     pages: z.array(z.object({ id, title: text(60), icon, sections: z.array(section).max(40) }).strict()).max(10).optional(),
