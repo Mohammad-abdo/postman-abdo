@@ -17,6 +17,7 @@ export type DomainId =
   | 'news'
   | 'tasks'
   | 'events'
+  | 'automotive'
   | 'generic';
 
 export type EntityKind =
@@ -90,6 +91,7 @@ export type Intent =
   | 'login'
   | 'register'
   | 'otp'
+  | 'otpRequest'
   | 'logout'
   | 'me'
   | 'updateProfile'
@@ -136,6 +138,43 @@ export interface DesignOp {
   /** Body/query fields the user has to fill (path params excluded). */
   inputs: string[];
   destructive?: boolean;
+  /** List screens: filter controls built from every request in the collection that hits this endpoint. */
+  filters?: DesignFilter[];
+  /** Every request of the collection hitting this endpoint, with the query inputs it accepts. */
+  variants?: { action: string; params: string[]; label: string }[];
+  /** Demo rows for endpoints without a saved response, shown with a "sample data" badge. */
+  sample?: unknown[];
+}
+
+/** One control of a list screen, mapped to a query parameter. */
+export interface DesignFilter {
+  name: string;
+  kind: 'search' | 'sort' | 'toggle' | 'min' | 'max' | 'enum' | 'ref';
+  label: string;
+  options?: { value: string; label: string }[];
+  /** `ref`: the entity whose items are the choices (categoryId → category). */
+  entity?: string;
+}
+
+/** A list shown inside an item's page: products of a category, reviews of a product… */
+export interface DesignRelation {
+  entity: string;
+  action: string;
+  /** Input that receives the item id (query `categoryId` or path `{vendorId}`). */
+  param: string;
+  via: 'query' | 'path';
+  label: string;
+  /** Lists of the same entity (sub-categories) are drawn as chips. */
+  self?: boolean;
+}
+
+/** One screen of a sign-in or sign-up flow. */
+export interface AuthStep {
+  action: string;
+  kind: 'identify' | 'otp' | 'credentials' | 'details';
+  title: string;
+  /** Request again (e.g. "Resend code") on the same screen. */
+  resend?: string;
 }
 
 export interface DesignEntity {
@@ -151,6 +190,7 @@ export interface DesignEntity {
    * Buttons on an item's detail screen, possibly calling another entity's endpoint (e.g. product → Add to cart).
    * `prefill` maps an input name to `item.<field>` of the shown item.
    */
+  relations?: DesignRelation[];
   ctas: { label: string; action: string; style: 'primary' | 'secondary' | 'danger'; icon: string; prefill?: Record<string, string> }[];
 }
 
@@ -169,7 +209,7 @@ export interface DesignSection {
   /** Tab/screen opened by "See all". */
   seeAll?: string;
   /** Shortcut buttons (type `shortcuts`). */
-  items?: { label: string; icon: string; entity?: string; action?: string }[];
+  items?: { label: string; icon: string; entity?: string; action?: string; values?: Record<string, string> }[];
 }
 
 export interface DesignScreen {
@@ -198,7 +238,7 @@ export interface AppDesign {
   domain: { id: DomainId; label: string; confidence: number; evidence: string[]; scores: Record<string, number> };
   brand: { name: string; tagline: string; icon: string };
   theme: DesignTheme;
-  auth: { login?: string; register?: string; otp?: string; logout?: string; me?: string; updateProfile?: string; required: boolean };
+  auth: { login?: string; register?: string; otp?: string; logout?: string; me?: string; updateProfile?: string; required: boolean; flows?: { login?: AuthStep[]; register?: AuthStep[] } };
   tabs: { id: string; label: string; icon: string; screen: string }[];
   screens: Record<string, DesignScreen>;
   entities: Record<string, DesignEntity>;

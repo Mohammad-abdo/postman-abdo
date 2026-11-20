@@ -38,9 +38,9 @@ export const KINDS: KindDef[] = [
   { kind: 'teacher', words: /^(teacher|instructor|tutor|professor|معلم|مدرس)$/, label: 'Teacher', icon: 'person', card: 'person', votes: { education: 2 } },
   { kind: 'student', words: /^(student|learner|pupil|طالب|طلاب)$/, label: 'Student', icon: 'school', card: 'person', votes: { education: 3 } },
   { kind: 'delivery', words: /^(delivery|deliverie|shipment|parcel|package|consignment|توصيل|شحنة|طرد)$/, label: 'Delivery', icon: 'local_shipping', card: 'order', votes: { delivery: 4 } },
-  { kind: 'trip', words: /^(trip|ride|journey|route|رحلة|مشوار)$/, label: 'Trip', icon: 'route', card: 'trip', votes: { ride: 4, delivery: 0.5 } },
+  { kind: 'trip', words: /^(trip|ride|journey|route|tow|towing|رحلة|مشوار|ونش)$/, label: 'Trip', icon: 'route', card: 'trip', votes: { ride: 4, delivery: 0.5 } },
   { kind: 'driver', words: /^(driver|courier|captain|rider|agent|delegate|سائق|مندوب|كابتن)$/, label: 'Driver', icon: 'two_wheeler', card: 'person', votes: { delivery: 3, ride: 2 } },
-  { kind: 'vehicle', words: /^(vehicle|car|bike|fleet|مركبة|سيارة)$/, label: 'Vehicle', icon: 'directions_car', card: 'tile', votes: { ride: 2, delivery: 1 } },
+  { kind: 'vehicle', words: /^(vehicle|car|bike|fleet|garage|مركبة|سيارة)$/, label: 'Vehicle', icon: 'directions_car', card: 'tile', votes: { ride: 1, delivery: 0.5, automotive: 3 } },
   { kind: 'wallet', words: /^(wallet|balance|earning|payout|withdrawal|commission|محفظة|رصيد|ارباح|أرباح)$/, label: 'Wallet', icon: 'account_balance_wallet', card: 'transaction', votes: { finance: 2, delivery: 1, ride: 1 } },
   { kind: 'restaurant', words: /^(restaurant|vendor|merchant|shop|store|branch|kitchen|مطعم|متجر|فرع)$/, label: 'Restaurant', icon: 'storefront', card: 'venue', votes: { food: 3, commerce: 1 } },
   { kind: 'menu', words: /^(menu|dish|meal|food|recipe|وجبة|طبق)$/, label: 'Dish', icon: 'restaurant', card: 'product', votes: { food: 4 } },
@@ -73,6 +73,7 @@ export const DOMAIN_WORDS: { domain: DomainId; words: RegExp; weight: number }[]
   { domain: 'realestate', words: /^(realestate|real-estate|property|properties|عقارات)$/, weight: 3 },
   { domain: 'news', words: /^(news|blog|magazine|media|اخبار)$/, weight: 3 },
   { domain: 'tasks', words: /^(task|todo|crm|helpdesk|support|kanban|tickets)$/, weight: 3 },
+  { domain: 'automotive', words: /^(car|cars|vehicle|garage|towing|tow|spare|part|parts|insurance|maintenance|workshop|mechanic|carwash|zonecar|autoparts|auto|سيارة|سيارات|ونش|قطع|صيانة)$/, weight: 3.5 },
   { domain: 'events', words: /^(event|events|tickets|conference|فعاليات)$/, weight: 3 },
 ];
 
@@ -140,6 +141,15 @@ export const DOMAINS: Record<DomainId, DomainDef> = {
     tabKinds: [['order', 'delivery', 'trip'], ['wallet', 'transaction', 'payment'], ['notification']],
     homeLabel: 'Home',
   },
+  automotive: {
+    id: 'automotive',
+    label: 'Car services',
+    tagline: 'Everything your car needs',
+    icon: 'directions_car',
+    theme: { mode: 'light', primary: '#1E40AF', accent: '#F59E0B', background: '#F2F4F8', surface: '#FFFFFF', text: '#0B1220', muted: '#64748B', radius: 16, style: 'bold' },
+    tabKinds: [['product', 'category'], ['vehicle'], ['order', 'trip', 'cart']],
+    homeLabel: 'Home',
+  },
   ride: {
     id: 'ride',
     label: 'Ride hailing',
@@ -170,3 +180,12 @@ export const DOMAINS: Record<DomainId, DomainDef> = {
 };
 
 export const kindDef = (kind: EntityKind): KindDef => KINDS.find((k) => k.kind === kind) || { kind: 'other', words: /$^/, label: 'Item', icon: 'widgets', card: 'tile', votes: {} };
+
+/** `in_stock` / `inStock` → "In stock". */
+export const humanize = (word: string) =>
+  word
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim()
+    .toLowerCase()
+    .replace(/^./, (c) => c.toUpperCase());

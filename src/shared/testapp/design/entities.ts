@@ -12,6 +12,10 @@ const GENERIC = /^(items?|list|all|details?|info|data|index|get|show|view|fetch|
 const AUTH = /^(login|log-in|signin|sign-in|sign_in|token|register|signup|sign-up|sign_up|otp|verify|verify-otp|verification|send-otp|resend-otp|logout|log-out|signout|sign-out|refresh|refresh-token|forgot-password|reset-password|password|auth|session)$/;
 /** `unread-count`, `orders-summary`: a figure about the parent resource, not a resource of its own. */
 const FIGURE = /(^|[-_])(count|counts|total|totals|stats?|statistics|summary)$/i;
+/** Containers of other resources: `/favorites/products/{id}`. */
+const SAVER = /^(favorite|favourite|wishlist|bookmark|saved|like)$/;
+/** Nouns too vague to name an entity alone. */
+const WEAK = /^(request|requests|entry|record|ticket|application)$/;
 const COMPOSITE = /^(home|dashboard|main|overview|index|landing|summary)$/;
 
 export function singular(word: string): string {
@@ -186,18 +190,31 @@ export function classifyEndpoint(endpoint: Endpoint, prefix: string[]): Classifi
   const hasBodyPassword = [...endpoint.body.fields.map((f) => f.name), ...Object.keys(isObj(endpoint.body.example) ? endpoint.body.example : {})].some((n) => /pass(word|wd)?$/i.test(n));
   const authWord = literals.map((l) => l.toLowerCase()).find((l) => AUTH.test(l)) || nameWords.find((w) => AUTH.test(w));
 
+  // `GET /auth/me`, `GET /account/profile`: the signed-in user, even under an auth folder
+  if (method === 'GET' && /^(me|profile|account|whoami|user|current-user|current_user)$/i.test(lastLiteral) && !isParam(last)) {
+    return { endpoint, entity: 'profile', kind: 'user', intent: 'me', words };
+  }
+
   if (authWord || (method === 'POST' && hasBodyPassword)) {
-    const w = authWord || '';
-    const intent: Intent = /logout|log-out|signout|sign-out/.test(w)
+    // Every word of the path and the request name counts: `/auth/otp/verify` is a verify step, not a generic "auth" login.
+    const text = [...literals, endpoint.name].join(' ').toLowerCase();
+    const intent: Intent = /logout|log-out|sign ?out|signout/.test(text)
       ? 'logout'
-      : /register|signup|sign-up|sign_up/.test(w)
-        ? 'register'
-        : /otp|verify|verification/.test(w)
-          ? 'otp'
-          : /refresh|password|forgot|reset/.test(w)
-            ? 'action'
+      : /refresh|forgot|reset|change[- _]?password/.test(text)
+        ? 'action'
+        : /otp|sms|code|verif|magic/.test(text)
+          ? /verif|confirm|check|validate|submit[- _]?code/.test(text) ? 'otp' : 'otpRequest'
+          : /register|sign ?up|signup|create[- _]?account/.test(text)
+            ? 'register'
             : 'login';
     if (intent !== 'action') return { endpoint, entity: null, kind: 'user', intent, words };
+  }
+
+  // `PUT /favorites/products/{id}`: saving a product, not editing it
+  const saverAt = literals.findIndex((l) => SAVER.test(singular(l)));
+  if (saverAt >= 0 && method !== 'GET' && isParam(last) && literals.length > saverAt + 1) {
+    const inner = singular(literals[literals.length - 1]);
+    return { endpoint, entity: inner.replace(/[^a-z0-9؀-ۿ]+/gi, '_'), kind: kindOf(inner), intent: 'action', verb: method === 'DELETE' ? 'Remove from favorites' : 'Save to favorites', words };
   }
 
   const body = exampleBody(endpoint);
@@ -217,8 +234,15 @@ export function classifyEndpoint(endpoint: Endpoint, prefix: string[]): Classifi
     return { endpoint, entity: null, kind: 'other', intent: 'composite', words };
   }
 
-  const resourceWord = resource ? singular(resource) : 'item';
+  // `/towing/requests`, `/insurance/requests`: a weak noun takes its meaning from the segment before it
+  let resourceWord = resource ? singular(resource) : 'item';
+  const at = resource ? literals.lastIndexOf(resource) : -1;
+  if (WEAK.test(resourceWord) && at > 0 && !GENERIC.test(singular(literals[at - 1]))) resourceWord = `${singular(literals[at - 1])}_${resourceWord}`;
   let kind = kindOf(resourceWord);
+  if (kind === 'other' && resourceWord.includes('_')) {
+    const head = kindOf(resourceWord.split('_')[0]);
+    kind = head !== 'other' ? head : 'order';
+  }
   if (kind === 'other') {
     const fromName = nameWords.map((w) => kindOf(w)).find((k) => k !== 'other');
     if (fromName) kind = fromName;

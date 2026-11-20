@@ -1,7 +1,7 @@
 import { ActionDef, ApiModel, AppSchema } from '../types';
 import { AppDesign, CardStyle, DesignEntity, DesignOp, DesignScreen, DesignSection, DomainId, EntityKind, FieldRoles, Intent, SectionType } from './design.types';
 import { Classified, classifyEndpoint, commonPrefix, exampleBody, fieldRoles, findLists, findRecord, isObj, kindOf, singular, tokens } from './entities';
-import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, kindDef, VERBS } from './lexicon';
+import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './lexicon';
 
 /**
  * Collection → app design: decide what kind of app this API powers (store, courier, school…), then compose
@@ -11,12 +11,6 @@ import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, kindDef, VERBS } from './lexicon';
 const MAX_HOME_SECTIONS = 8;
 const MIN_DOMAIN_SCORE = 2.5;
 
-const humanize = (word: string) =>
-  word
-    .replace(/[_-]+/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .trim()
-    .replace(/^./, (c) => c.toUpperCase());
 
 function pluralize(label: string) {
   if (/[^aeiou]y$/i.test(label)) return label.replace(/y$/i, 'ies');
@@ -280,6 +274,7 @@ const HOME: Record<DomainId, Spec[]> = {
   news: [{ type: 'hero', kinds: ['article', 'banner'] }, { type: 'chips', kinds: ['category'] }, { type: 'list', kinds: ['article'], title: 'Latest', limit: 8 }],
   tasks: [{ type: 'greeting' }, { type: 'stats', kinds: ['other'] }, { type: 'list', kinds: ['task'], title: 'Your tasks', limit: 6 }, { type: 'rail', kinds: ['project'], title: 'Projects' }],
   events: [{ type: 'hero', kinds: ['event', 'banner'] }, { type: 'chips', kinds: ['category'] }, { type: 'list', kinds: ['event'], title: 'This week', limit: 5 }, { type: 'list', kinds: ['booking'], title: 'Your tickets', limit: 3 }],
+  automotive: [{ type: 'greeting' }, { type: 'rail', kinds: ['vehicle'], title: 'My garage' }, { type: 'shortcuts' }, { type: 'hero', kinds: ['banner', 'coupon'] }, { type: 'chips', kinds: ['category'], title: 'Shop by category' }, { type: 'grid', kinds: ['product'], title: 'Popular parts' }, { type: 'list', kinds: ['trip', 'order'], title: 'Recent requests', limit: 3 }],
   generic: [{ type: 'greeting' }, { type: 'shortcuts' }],
 };
 
