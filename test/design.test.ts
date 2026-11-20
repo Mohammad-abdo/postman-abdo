@@ -45,8 +45,9 @@ describe('app design: domain detection', () => {
   it('builds a store home from a /home endpoint that returns banners, categories and products', () => {
     const d = design(storeCollection());
     assert.equal(d.domain.id, 'commerce');
-    const [hero, chips, grid] = d.screens.home.sections!;
-    assert.deepEqual([hero.type, chips.type, grid.type], ['hero', 'chips', 'grid']);
+    const [search, hero, chips, grid] = d.screens.home.sections!;
+    assert.deepEqual([search.type, hero.type, chips.type, grid.type], ['search', 'hero', 'chips', 'grid']);
+    assert.ok(!d.screens.home.sections!.some((s) => s.entity === 'cart'), 'the cart has its own screen, not a home section');
     assert.deepEqual(grid.dataPath, ['data', 'products']);
     const product = d.entities.product;
     const addToCart = product.ctas.find((c) => c.label === 'Add to cart');

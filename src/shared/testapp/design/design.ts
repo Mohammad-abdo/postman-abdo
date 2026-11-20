@@ -250,6 +250,10 @@ const HOME: Record<DomainId, Spec[]> = {
   generic: [{ type: 'greeting' }, { type: 'shortcuts' }],
 };
 
+const SECTION_RANK: SectionType[] = ['hero', 'chips', 'rail', 'grid', 'list'];
+const TOP_SECTIONS: SectionType[] = ['greeting', 'search', 'status'];
+/** Kinds that belong to their own screen (profile, cart, settings) rather than the home feed. */
+const NOT_ON_HOME = new Set<EntityKind>(['user', 'setting', 'cart']);
 const COMPOSITE_SECTION: Partial<Record<CardStyle, SectionType>> = { banner: 'hero', chip: 'chips', product: 'grid', venue: 'rail', course: 'rail', event: 'rail', person: 'rail' };
 
 function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, composite: Classified[], actionOf: (key: string) => ActionDef | undefined, tabFor: (entity: string) => string | undefined) {
@@ -264,13 +268,18 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
   for (const c of composite) {
     const action = actionOf(c.endpoint.key);
     if (!action) continue;
-    for (const list of findLists(exampleBody(c.endpoint)).slice(0, 6)) {
+    const lists = findLists(exampleBody(c.endpoint)).slice(0, 6).map((list) => {
       const key = list.path[list.path.length - 1] || 'items';
       const kind = kindOf(key);
       const roles = fieldRoles(list.rows[0]);
       const card = cardFor(kind, roles);
+      return { list, key, kind, roles, card, type: COMPOSITE_SECTION[card] || ('list' as SectionType) };
+    });
+    // Present them the way shopping/food apps do: banners, then categories, then rails and grids, then plain lists.
+    lists.sort((a, b) => SECTION_RANK.indexOf(a.type) - SECTION_RANK.indexOf(b.type));
+    for (const { list, key, kind, roles, card, type } of lists) {
       const owner = all.find((e) => e.kind === kind && kind !== 'other');
-      add({ type: COMPOSITE_SECTION[card] || 'list', title: humanize(key), action: action.id, dataPath: list.path, roles, card, entity: owner?.id, limit: 6, seeAll: owner ? tabFor(owner.id) : undefined });
+      add({ type, title: humanize(key), action: action.id, dataPath: list.path, roles, card, entity: owner?.id, limit: 6, seeAll: owner ? tabFor(owner.id) : undefined });
       if (owner) used.add(owner.id);
     }
   }
@@ -323,12 +332,14 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
   for (const entity of all) {
     if (sections.length >= MAX_HOME_SECTIONS) break;
     const op = listOp(entity);
-    if (!op || used.has(entity.id) || entity.kind === 'user' || entity.kind === 'setting') continue;
+    if (!op || op.pathParams.length || used.has(entity.id) || NOT_ON_HOME.has(entity.kind)) continue;
     used.add(entity.id);
     const type: SectionType = entity.card === 'product' ? 'grid' : ['venue', 'course', 'event', 'person'].includes(entity.card) ? 'rail' : 'list';
     add({ type, title: entity.plural, entity: entity.id, action: op.action, dataPath: op.dataPath, roles: op.roles, card: entity.card, limit: type === 'list' ? 4 : 6, seeAll: tabFor(entity.id) });
   }
-  return sections;
+  // Greeting, search and the online toggle always sit at the top, above content from a /home endpoint.
+  const top = (t: SectionType) => (TOP_SECTIONS.includes(t) ? TOP_SECTIONS.indexOf(t) : TOP_SECTIONS.length);
+  return sections.map((s, i) => ({ s, i })).sort((a, b) => top(a.s.type) - top(b.s.type) || a.i - b.i).map(({ s }, i) => ({ ...s, id: `home.${i}` }));
 }
 
 /* ------------------------------------- build ------------------------------------- */
