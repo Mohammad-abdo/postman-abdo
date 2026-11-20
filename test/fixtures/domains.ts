@@ -67,4 +67,4 @@ export const arabicStoreCollection = () =>
   collection('متجر الأزياء', [item('المنتجات', 'GET', '{{url}}/منتجات', ok([{ id: 1, name: 'قميص', price: 250 }])), item('السلة', 'POST', '{{url}}/سلة', ok({ ok: true }))]);
 
 export const genericCollection = () =>
-  collection('Inventory sync', [item('Widgets', 'GET', '{{url}}/widgets', ok([{ id: 1, label: 'W1' }])), item('Gadgets', 'GET', '{{url}}/gadgets', ok([{ id: 2, label: 'G2' }]))]);
+  collection('Widget sync', [item('Widgets', 'GET', '{{url}}/widgets', ok([{ id: 1, label: 'W1' }])), item('Gadgets', 'GET', '{{url}}/gadgets', ok([{ id: 2, label: 'G2' }]))]);

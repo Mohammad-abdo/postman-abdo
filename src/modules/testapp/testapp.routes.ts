@@ -7,6 +7,8 @@ import { z } from 'zod';
 import { audit } from '../../core/audit/audit.service';
 import { currentUserId } from '../../core/middleware/auth.middleware';
 import { realInvokeSchema, rulesSchema, runSchema, analyzeSchema, createSessionSchema, createTestAppSchema, invokeSchema, overrideSchema, regenerateSchema, resetSchema, updateTestAppSchema } from './testapp.schema';
+import { testAppService } from './testapp.service';
+import { saveDesignSchema } from '../../shared/testapp/design/customize';
 
 /** Collection-to-Test-App generator (authenticated). Mounted at /api/testapps. */
 export const testAppRoutes = Router();
@@ -41,6 +43,8 @@ testAppRoutes.get('/:id/runs/:rid', c.getRun);
 testAppRoutes.get('/:id/runs/:rid/export', c.exportRun);
 testAppRoutes.get('/:id/coverage', c.coverage);
 
+testAppRoutes.put('/:id/design', validateBody(saveDesignSchema), async (req, res) => res.json(await testAppService.saveDesign(currentUserId(req), String(req.params.id), req.body.customization)));
+testAppRoutes.get('/:id/remixes', async (req, res) => res.json(await testAppService.remixes(currentUserId(req), String(req.params.id))));
 testAppRoutes.get('/:id/shares', async (req, res) => res.json(await shareService.list(currentUserId(req), String(req.params.id))));
 testAppRoutes.post('/:id/shares', validateBody(createShareSchema), async (req, res) => {
   const out = await shareService.create(currentUserId(req), String(req.params.id), req.body);

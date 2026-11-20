@@ -5,6 +5,7 @@ import { diffContracts } from '../../shared/testapp/contract';
 import { redact } from '../../shared/testapp/ai';
 import { generateApp, savedResponse } from '../../shared/testapp/generate';
 import { withDesign } from '../../shared/testapp/design/design';
+import type { Customization } from '../../shared/testapp/design/customize';
 import { MockCtx, MockState, createInitialState, invoke } from '../../shared/testapp/mock';
 import { CustomTest, TestResult, compareRuns, coverageOf, createMockProbe, runMockTests } from '../../shared/testapp/testing';
 import { validateRule } from '../../shared/testapp/custom-rules';
@@ -143,7 +144,7 @@ export const testAppService = {
     const v = await version(id, app.currentVersionId);
     const overrides = await prisma.testAppOverride.findMany({ where: { testAppId: id } });
     const collection = await prisma.collection.findUnique({ where: { id: app.collectionId }, select: { id: true, name: true, deletedAt: true } });
-    return { app, version: { id: v.id, version: v.version, sourceHash: v.sourceHash, contractVersion: v.contractVersion, ruleSetVersion: v.ruleSetVersion, seed: v.seed, createdAt: v.createdAt, stats: v.stats }, schema: withDesign(v.schema as any, v.model), warnings: (v.model as any).warnings, overrides, collection };
+    return { app, version: { id: v.id, version: v.version, sourceHash: v.sourceHash, contractVersion: v.contractVersion, ruleSetVersion: v.ruleSetVersion, seed: v.seed, createdAt: v.createdAt, stats: v.stats }, schema: withDesign(v.schema as any, v.model), customization: (settingsOf(app) as { design?: unknown }).design ?? null, warnings: (v.model as any).warnings, overrides, collection };
   },
 
   async versionPart(userId: string, id: string, n: number, part: string) {
@@ -157,6 +158,22 @@ export const testAppService = {
   async versions(userId: string, id: string) {
     await access(userId, id);
     return prisma.testAppVersion.findMany({ where: { testAppId: id }, orderBy: { version: 'desc' }, select: { id: true, version: true, sourceHash: true, contractVersion: true, ruleSetVersion: true, stats: true, createdAt: true } });
+  },
+
+  /** The owner's design studio changes (null resets to the generated design). */
+  async saveDesign(userId: string, id: string, customization: Customization | null) {
+    const app = await access(userId, id, true);
+    const settings = { ...settingsOf(app) } as Record<string, unknown>;
+    if (customization) settings.design = customization;
+    else delete settings.design;
+    await prisma.testApp.update({ where: { id }, data: { settings: json(settings) } });
+    return { customization };
+  },
+
+  /** Versions people published from this app's share links. */
+  async remixes(userId: string, id: string) {
+    await access(userId, id);
+    return prisma.testAppRemix.findMany({ where: { testAppId: id }, orderBy: { createdAt: 'desc' }, take: 100, select: { id: true, name: true, author: true, shareId: true, customization: true, createdAt: true } });
   },
 
   async update(userId: string, id: string, input: { name?: string; settings?: Record<string, unknown> }) {

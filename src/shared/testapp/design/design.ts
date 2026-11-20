@@ -2,6 +2,7 @@ import { ActionDef, ApiModel, AppSchema } from '../types';
 import { AppDesign, CardStyle, DesignEntity, DesignOp, DesignScreen, DesignSection, DomainId, EntityKind, FieldRoles, Intent, SectionType } from './design.types';
 import { Classified, classifyEndpoint, commonPrefix, exampleBody, fieldRoles, findLists, findRecord, isObj, kindOf, singular, tokens } from './entities';
 import { buildAuth } from './auth';
+import { isRtl, pickLook } from './look';
 import { buildRelations, enrichLists, folderServices, isLookup } from './lists';
 import { sampleProfile, sampleRows } from './sample';
 import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './lexicon';
@@ -11,6 +12,8 @@ import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './
  * screens, tabs and buttons that make it feel like that kind of app. Deterministic and pure.
  */
 
+/** Bump when the design engine changes so saved apps are re-designed when opened. */
+export const DESIGN_VERSION = 3;
 const MAX_HOME_SECTIONS = 8;
 const MIN_DOMAIN_SCORE = 2.5;
 
@@ -279,6 +282,12 @@ const HOME: Record<DomainId, Spec[]> = {
   tasks: [{ type: 'greeting' }, { type: 'stats', kinds: ['other'] }, { type: 'list', kinds: ['task'], title: 'Your tasks', limit: 6 }, { type: 'rail', kinds: ['project'], title: 'Projects' }],
   events: [{ type: 'hero', kinds: ['event', 'banner'] }, { type: 'chips', kinds: ['category'] }, { type: 'list', kinds: ['event'], title: 'This week', limit: 5 }, { type: 'list', kinds: ['booking'], title: 'Your tickets', limit: 3 }],
   automotive: [{ type: 'greeting' }, { type: 'rail', kinds: ['vehicle'], title: 'My garage' }, { type: 'shortcuts' }, { type: 'hero', kinds: ['banner', 'coupon'] }, { type: 'chips', kinds: ['category'], title: 'Shop by category' }, { type: 'grid', kinds: ['product'], title: 'Popular parts' }, { type: 'list', kinds: ['trip', 'order'], title: 'Recent requests', limit: 3 }],
+  fitness: [{ type: 'greeting' }, { type: 'stats', kinds: ['workout', 'other'] }, { type: 'rail', kinds: ['workout'], title: 'Today\'s workouts' }, { type: 'list', kinds: ['booking', 'schedule'], title: 'Upcoming classes', limit: 3 }, { type: 'rail', kinds: ['teacher'], title: 'Coaches' }, { type: 'grid', kinds: ['product'], title: 'Shop' }],
+  beauty: [{ type: 'greeting' }, { type: 'search' }, { type: 'hero', kinds: ['banner', 'coupon'] }, { type: 'chips', kinds: ['category'] }, { type: 'rail', kinds: ['service'], title: 'Popular services' }, { type: 'rail', kinds: ['listing', 'restaurant'], title: 'Salons near you' }, { type: 'list', kinds: ['booking'], title: 'Your appointments', limit: 3 }],
+  travel: [{ type: 'search' }, { type: 'hero', kinds: ['banner', 'coupon'] }, { type: 'rail', kinds: ['flight'], title: 'Flights' }, { type: 'grid', kinds: ['listing'], title: 'Places to stay' }, { type: 'list', kinds: ['booking'], title: 'Your trips', limit: 3 }],
+  jobs: [{ type: 'greeting' }, { type: 'search' }, { type: 'chips', kinds: ['category'] }, { type: 'list', kinds: ['job'], title: 'Recommended for you', limit: 6 }, { type: 'list', kinds: ['booking', 'assignment', 'order'], title: 'Your applications', limit: 3 }],
+  media: [{ type: 'hero', kinds: ['media', 'banner'] }, { type: 'chips', kinds: ['category'] }, { type: 'rail', kinds: ['media'], title: 'Trending now' }, { type: 'rail', kinds: ['wishlist'], title: 'Your library' }],
+  business: [{ type: 'greeting' }, { type: 'stats', kinds: ['other', 'invoice', 'wallet'] }, { type: 'shortcuts' }, { type: 'list', kinds: ['lead', 'order'], title: 'Latest', limit: 4 }, { type: 'list', kinds: ['invoice', 'payment'], title: 'Invoices', limit: 3 }, { type: 'list', kinds: ['employee', 'task'], title: 'Team', limit: 4 }],
   generic: [{ type: 'greeting' }, { type: 'shortcuts' }],
 };
 
@@ -421,6 +430,7 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   const classified = model.endpoints.map((e) => classifyEndpoint(e, prefix)).map((c) => (academic && c.kind === 'doctor' ? { ...c, kind: 'teacher' as EntityKind } : c));
   const domain = classifyDomain(model, classified, prefix);
   const def = DOMAINS[domain.id];
+  const rtl = isRtl([model.meta.name, ...model.endpoints.flatMap((e) => [e.name, ...e.folderPath])]);
   // In courier and ride apps an "assignment" is a delivery job, not homework.
   const jobs = domain.id === 'delivery' || domain.id === 'ride';
   const entities = buildEntities(jobs ? classified.map((c) => (c.kind === 'assignment' ? { ...c, kind: 'delivery' as EntityKind } : c)) : classified, actionOf);
@@ -479,10 +489,11 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   ]);
 
   return {
-    version: 1,
+    version: DESIGN_VERSION,
     domain,
     brand: { name: schema.app.name.replace(/\s*[—–-]\s*Test App$/i, '').replace(/\b(api|collection|postman)\b/gi, '').replace(/\s{2,}/g, ' ').trim() || 'My App', tagline: def.tagline, icon: def.icon },
-    theme: def.theme,
+    theme: pickLook(domain.id, `${model.meta.name}|${model.endpoints.length}`, rtl),
+    dir: rtl ? 'rtl' : 'ltr',
     auth,
     tabs,
     screens,
@@ -494,7 +505,7 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
 
 /** Versions saved before app designs existed get one computed on read; a failure never breaks loading. */
 export function withDesign<T extends Pick<AppSchema, 'actions' | 'app'> & { design?: AppDesign }>(schema: T, model: unknown): T {
-  if (!schema || schema.design || !model) return schema;
+  if (!schema || !model || schema.design?.version === DESIGN_VERSION) return schema;
   try {
     return { ...schema, design: buildDesign(model as ApiModel, schema) };
   } catch {

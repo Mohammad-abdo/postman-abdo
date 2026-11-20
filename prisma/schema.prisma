@@ -472,6 +472,7 @@ model TestApp {
   sessions         TestAppSession[]
   runs             TestRun[]
   shares           TestAppShare[]
+  remixes          TestAppRemix[]
 
   @@index([workspaceId])
   @@index([collectionId])
@@ -564,6 +565,21 @@ model TestAppShare {
   testApp      TestApp   @relation(fields: [testAppId], references: [id], onDelete: Cascade)
 
   @@index([testAppId])
+}
+
+/// A design someone made from a shared test app ("their version"): only the customization, never data or secrets.
+model TestAppRemix {
+  id            String   @id @default(uuid())
+  testAppId     String
+  shareId       String
+  name          String   @db.VarChar(80)
+  author        String?  @db.VarChar(60)
+  customization Json
+  createdAt     DateTime @default(now())
+  testApp       TestApp  @relation(fields: [testAppId], references: [id], onDelete: Cascade)
+
+  @@index([testAppId])
+  @@index([shareId])
 }
 
 /// Daily AI token usage per workspace (budget enforcement for the optional AI test assistant).

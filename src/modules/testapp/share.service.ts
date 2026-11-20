@@ -6,6 +6,9 @@ import { env } from '../../config/env';
 import { prisma } from '../../core/database/prisma';
 import { Forbidden, HttpError, NotFound, Unauthorized } from '../../core/errors/http-error';
 import { publicSchema } from '../../shared/testapp/public';
+import { publishRemixSchema } from '../../shared/testapp/design/customize';
+
+const MAX_REMIXES = 500;
 import { withDesign } from '../../shared/testapp/design/design';
 import { AppSchema } from '../../shared/testapp/types';
 import { sha256 } from '../../shared/testapp/util';
@@ -109,12 +112,26 @@ export const shareService = {
     return { unlock: jwt.sign({ shr: share.id }, env.jwtSecret, { expiresIn: '12h' }) };
   },
 
-  async schema(token: string, unlock?: string) {
+  /** The shared app, with the owner's design, or with a published version when `remixId` is given. */
+  async schema(token: string, unlock?: string, remixId?: string) {
     const share = await shareService.resolve(token);
     shareService.assertUnlocked(share, unlock);
     const v = await prisma.testAppVersion.findUnique({ where: { id: share.versionId }, select: { schema: true, model: true } });
     if (!v) throw gone();
-    return publicSchema(withDesign(v.schema as unknown as AppSchema, v.model));
+    const app = await prisma.testApp.findUnique({ where: { id: share.testAppId }, select: { settings: true } });
+    const remix = remixId ? await prisma.testAppRemix.findFirst({ where: { id: remixId, shareId: share.id }, select: { id: true, name: true, author: true, customization: true, createdAt: true } }) : null;
+    const owner = (app?.settings as { design?: unknown } | null)?.design ?? null;
+    return { ...publicSchema(withDesign(v.schema as unknown as AppSchema, v.model)), customization: remix ? remix.customization : owner, remix: remix ? { id: remix.id, name: remix.name, author: remix.author, createdAt: remix.createdAt } : null };
+  },
+
+  /** A visitor publishes their own design of the shared app; it gets its own link. */
+  async publishRemix(token: string, unlock: string | undefined, input: z.infer<typeof publishRemixSchema>) {
+    const share = await shareService.resolve(token);
+    shareService.assertUnlocked(share, unlock);
+    const count = await prisma.testAppRemix.count({ where: { shareId: share.id } });
+    if (count >= MAX_REMIXES) throw new HttpError(429, 'This shared app has reached its limit of published designs.');
+    const remix = await prisma.testAppRemix.create({ data: { testAppId: share.testAppId, shareId: share.id, name: input.name, author: input.author || null, customization: input.customization as object } });
+    return { id: remix.id };
   },
 
   async openSession(token: string, unlock: string | undefined, seed?: number) {

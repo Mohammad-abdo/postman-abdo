@@ -18,6 +18,12 @@ export type DomainId =
   | 'tasks'
   | 'events'
   | 'automotive'
+  | 'fitness'
+  | 'beauty'
+  | 'travel'
+  | 'jobs'
+  | 'media'
+  | 'business'
   | 'generic';
 
 export type EntityKind =
@@ -61,6 +67,14 @@ export type EntityKind =
   | 'doctor'
   | 'patient'
   | 'setting'
+  | 'workout'
+  | 'service'
+  | 'flight'
+  | 'job'
+  | 'employee'
+  | 'lead'
+  | 'invoice'
+  | 'media'
   | 'other';
 
 /** How one item of an entity is drawn. */
@@ -194,7 +208,26 @@ export interface DesignEntity {
   ctas: { label: string; action: string; style: 'primary' | 'secondary' | 'danger'; icon: string; prefill?: Record<string, string> }[];
 }
 
-export type SectionType = 'greeting' | 'search' | 'hero' | 'chips' | 'grid' | 'rail' | 'list' | 'stats' | 'map' | 'status' | 'balance' | 'shortcuts' | 'feed';
+export type SectionType =
+  | 'greeting'
+  | 'search'
+  | 'hero'
+  | 'chips'
+  | 'grid'
+  | 'rail'
+  | 'list'
+  | 'stats'
+  | 'map'
+  | 'status'
+  | 'balance'
+  | 'shortcuts'
+  | 'feed'
+  /* content blocks people add in the design studio */
+  | 'text'
+  | 'image'
+  | 'button'
+  | 'banner'
+  | 'spacer';
 
 export interface DesignSection {
   id: string;
@@ -208,6 +241,13 @@ export interface DesignSection {
   limit?: number;
   /** Tab/screen opened by "See all". */
   seeAll?: string;
+  /** Content blocks: heading/body text, image URL, button target. */
+  body?: string;
+  image?: string;
+  /** `button`: open an entity list, run an action, or open a page. */
+  target?: { entity?: string; action?: string; page?: string; values?: Record<string, string> };
+  /** `grid`/`rail`/`list`: columns for grids (2 or 3). */
+  columns?: number;
   /** Shortcut buttons (type `shortcuts`). */
   items?: { label: string; icon: string; entity?: string; action?: string; values?: Record<string, string> }[];
 }
@@ -229,14 +269,29 @@ export interface DesignTheme {
   text: string;
   muted: string;
   radius: number;
-  /** Visual personality used by the renderer for small details (shadows, density). */
-  style: 'soft' | 'bold' | 'minimal' | 'playful';
+  /** Visual personality (preset): shadows, borders, shapes and motion. */
+  style: ThemeStyle;
+  /** Google font family names (from the renderer's font list). */
+  font?: string;
+  headingFont?: string;
+  density?: 'compact' | 'comfortable' | 'spacious';
+  tabStyle?: 'floating' | 'docked' | 'minimal';
+  headerStyle?: 'large' | 'centered' | 'compact';
+  cardStyle?: 'shadow' | 'outline' | 'flat' | 'glass';
+  /** Text size multiplier (0.85 – 1.25). */
+  scale?: number;
 }
 
+export type ThemeStyle = 'soft' | 'bold' | 'minimal' | 'playful' | 'glass' | 'elegant' | 'brutal' | 'neon' | 'classic';
+
 export interface AppDesign {
-  version: 1;
+  version: number;
   domain: { id: DomainId; label: string; confidence: number; evidence: string[]; scores: Record<string, number> };
-  brand: { name: string; tagline: string; icon: string };
+  brand: { name: string; tagline: string; icon: string; logo?: string };
+  /** Writing direction: `rtl` for collections written in Arabic. */
+  dir?: 'ltr' | 'rtl';
+  /** Extra pages built in the design studio (shown as tabs that point at `page.<id>`). */
+  pages?: { id: string; title: string; icon: string; sections: DesignSection[] }[];
   theme: DesignTheme;
   auth: { login?: string; register?: string; otp?: string; logout?: string; me?: string; updateProfile?: string; required: boolean; flows?: { login?: AuthStep[]; register?: AuthStep[] } };
   tabs: { id: string; label: string; icon: string; screen: string }[];

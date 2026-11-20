@@ -27,7 +27,7 @@ export const KINDS: KindDef[] = [
   { kind: 'notification', words: /^(notification|alert|inbox|إشعار|اشعار|تنبيه)$/, label: 'Notification', icon: 'notifications', card: 'tile', votes: {} },
   { kind: 'wishlist', words: /^(wishlist|favorite|favourite|fav|like_?list|مفضلة)$/, label: 'Wishlist', icon: 'favorite', card: 'product', votes: { commerce: 3 } },
   { kind: 'coupon', words: /^(coupon|voucher|discount|promo_?code|كوبون|خصم)$/, label: 'Coupon', icon: 'confirmation_number', card: 'tile', votes: { commerce: 2, food: 1 } },
-  { kind: 'payment', words: /^(payment|checkout|invoice|billing|دفع|فاتورة)$/, label: 'Payment', icon: 'credit_card', card: 'transaction', votes: { commerce: 1, finance: 1 } },
+  { kind: 'payment', words: /^(payment|checkout|billing|دفع)$/, label: 'Payment', icon: 'credit_card', card: 'transaction', votes: { commerce: 1, finance: 1 } },
   { kind: 'user', words: /^(user|profile|account|me|customer|member|client|مستخدم|حساب|عميل)$/, label: 'Profile', icon: 'person', card: 'person', votes: {} },
   { kind: 'course', words: /^(course|subject|class|classe|program|curriculum|مادة|مواد|كورس|دورة)$/, label: 'Course', icon: 'school', card: 'course', votes: { education: 4 } },
   { kind: 'lesson', words: /^(lesson|lecture|video|chapter|unit|content|module|درس|محاضرة)$/, label: 'Lesson', icon: 'play_circle', card: 'article', votes: { education: 4 } },
@@ -35,7 +35,7 @@ export const KINDS: KindDef[] = [
   { kind: 'assignment', words: /^(assignment|homework|submission|واجب|تكليف)$/, label: 'Assignment', icon: 'assignment', card: 'tile', votes: { education: 3 } },
   { kind: 'grade', words: /^(grade|result|mark|score|transcript|درجة|نتيجة)$/, label: 'Grade', icon: 'grade', card: 'tile', votes: { education: 3 } },
   { kind: 'schedule', words: /^(schedule|timetable|calendar|session|attendance|جدول|حضور)$/, label: 'Schedule', icon: 'event_note', card: 'event', votes: { education: 2, health: 0.5 } },
-  { kind: 'teacher', words: /^(teacher|instructor|tutor|professor|معلم|مدرس)$/, label: 'Teacher', icon: 'person', card: 'person', votes: { education: 2 } },
+  { kind: 'teacher', words: /^(teacher|instructor|tutor|professor|trainer|coach|معلم|مدرس)$/, label: 'Teacher', icon: 'person', card: 'person', votes: { education: 2 } },
   { kind: 'student', words: /^(student|learner|pupil|طالب|طلاب)$/, label: 'Student', icon: 'school', card: 'person', votes: { education: 3 } },
   { kind: 'delivery', words: /^(delivery|deliverie|shipment|parcel|package|consignment|توصيل|شحنة|طرد)$/, label: 'Delivery', icon: 'local_shipping', card: 'order', votes: { delivery: 4 } },
   { kind: 'trip', words: /^(trip|ride|journey|route|tow|towing|رحلة|مشوار|ونش)$/, label: 'Trip', icon: 'route', card: 'trip', votes: { ride: 4, delivery: 0.5 } },
@@ -56,6 +56,14 @@ export const KINDS: KindDef[] = [
   { kind: 'article', words: /^(article|news|blog|story_?news|مقال|خبر|اخبار)$/, label: 'Article', icon: 'article', card: 'article', votes: { news: 4 } },
   { kind: 'doctor', words: /^(doctor|physician|clinic|specialist|طبيب|دكتور|عيادة)$/, label: 'Doctor', icon: 'medical_services', card: 'person', votes: { health: 4 } },
   { kind: 'patient', words: /^(patient|مريض)$/, label: 'Patient', icon: 'personal_injury', card: 'person', votes: { health: 3 } },
+  { kind: 'workout', words: /^(workout|exercise|training|class_?session|program_?day|routine|تمرين|تمارين)$/, label: 'Workout', icon: 'fitness_center', card: 'course', votes: { fitness: 4 } },
+  { kind: 'service', words: /^(service|treatment|haircut|massage|manicure|خدمة|خدمات)$/, label: 'Service', icon: 'spa', card: 'venue', votes: { beauty: 2, health: 0.5, automotive: 0.5 } },
+  { kind: 'flight', words: /^(flight|airline|airport|itinerary|طيران)$/, label: 'Flight', icon: 'flight', card: 'trip', votes: { travel: 4 } },
+  { kind: 'job', words: /^(job|vacancy|vacancie|position|opening|career|وظيفة|وظائف)$/, label: 'Job', icon: 'work', card: 'article', votes: { jobs: 4 } },
+  { kind: 'employee', words: /^(employee|staff|worker|payroll|leave|موظف|موظفين)$/, label: 'Employee', icon: 'badge', card: 'person', votes: { business: 3 } },
+  { kind: 'lead', words: /^(lead|deal|opportunity|opportunitie|contact|prospect)$/, label: 'Lead', icon: 'handshake', card: 'person', votes: { business: 3 } },
+  { kind: 'invoice', words: /^(invoice|bill|quotation|estimate|expense|فاتورة|فواتير)$/, label: 'Invoice', icon: 'request_quote', card: 'transaction', votes: { business: 2.5, finance: 1 } },
+  { kind: 'media', words: /^(song|track|album|playlist|episode|podcast|movie|film|series|show|artist|اغنية|فيلم|مسلسل)$/, label: 'Media', icon: 'play_circle', card: 'course', votes: { media: 4 } },
   { kind: 'setting', words: /^(setting|config|configuration|preference|اعداد|إعداد)$/, label: 'Settings', icon: 'settings', card: 'tile', votes: {} },
 ];
 
@@ -74,6 +82,12 @@ export const DOMAIN_WORDS: { domain: DomainId; words: RegExp; weight: number }[]
   { domain: 'news', words: /^(news|blog|magazine|media|اخبار)$/, weight: 3 },
   { domain: 'tasks', words: /^(task|todo|crm|helpdesk|support|kanban|tickets)$/, weight: 3 },
   { domain: 'automotive', words: /^(car|cars|vehicle|garage|towing|tow|spare|part|parts|insurance|maintenance|workshop|mechanic|carwash|zonecar|autoparts|auto|سيارة|سيارات|ونش|قطع|صيانة)$/, weight: 3.5 },
+  { domain: 'fitness', words: /^(gym|fitness|workout|trainer|coach|yoga|crossfit|nutrition|diet|جيم|لياقة)$/, weight: 4 },
+  { domain: 'beauty', words: /^(salon|spa|barber|beauty|nails|hair|makeup|cosmetic|skincare|صالون|تجميل|حلاق)$/, weight: 4 },
+  { domain: 'travel', words: /^(travel|flight|airline|tour|tourism|visa|سفر|طيران|سياحة)$/, weight: 4 },
+  { domain: 'jobs', words: /^(job|career|recruit|recruitment|hiring|vacancy|توظيف|وظائف)$/, weight: 4 },
+  { domain: 'media', words: /^(music|stream|streaming|podcast|movie|video|radio|playlist|موسيقى|افلام)$/, weight: 4 },
+  { domain: 'business', words: /^(crm|erp|hr|hrm|payroll|invoicing|accounting|inventory|pos|sales|backoffice|مبيعات|محاسبة|مخزون)$/, weight: 3 },
   { domain: 'events', words: /^(event|events|tickets|conference|فعاليات)$/, weight: 3 },
 ];
 
@@ -179,6 +193,12 @@ export const DOMAINS: Record<DomainId, DomainDef> = {
   news: { id: 'news', label: 'News', tagline: 'Stories that matter', icon: 'newspaper', theme: light('#111827', '#DC2626', 'minimal', 12), tabKinds: [['article'], ['category'], ['notification']], homeLabel: 'Today' },
   tasks: { id: 'tasks', label: 'Productivity', tagline: 'Get things done', icon: 'task_alt', theme: light('#2563EB', '#7C3AED', 'minimal', 14), tabKinds: [['task'], ['project'], ['notification']], homeLabel: 'Today' },
   events: { id: 'events', label: 'Events', tagline: 'Do not miss out', icon: 'celebration', theme: light('#7C3AED', '#F43F5E', 'playful', 18), tabKinds: [['event'], ['booking'], ['notification']], homeLabel: 'Discover' },
+  fitness: { id: 'fitness', label: 'Fitness', tagline: 'Stronger every day', icon: 'fitness_center', theme: light('#F97316', '#111827', 'bold', 16), tabKinds: [['workout'], ['booking', 'schedule'], ['product', 'order']], homeLabel: 'Today' },
+  beauty: { id: 'beauty', label: 'Beauty & salon', tagline: 'Look good, feel great', icon: 'spa', theme: light('#DB2777', '#8B5CF6', 'soft', 18), tabKinds: [['service', 'listing'], ['booking'], ['product', 'wishlist']], homeLabel: 'Discover' },
+  travel: { id: 'travel', label: 'Travel', tagline: 'Your next trip starts here', icon: 'flight', theme: light('#0284C7', '#F97316', 'glass', 20), tabKinds: [['flight', 'listing'], ['booking'], ['wishlist']], homeLabel: 'Explore' },
+  jobs: { id: 'jobs', label: 'Jobs', tagline: 'Find work you love', icon: 'work', theme: light('#0A66C2', '#16A34A', 'minimal', 12), tabKinds: [['job'], ['booking', 'assignment', 'order'], ['message', 'notification']], homeLabel: 'Jobs' },
+  media: { id: 'media', label: 'Streaming', tagline: 'Press play', icon: 'play_circle', theme: light('#1DB954', '#A78BFA', 'neon', 16), tabKinds: [['media'], ['category'], ['wishlist']], homeLabel: 'Home' },
+  business: { id: 'business', label: 'Business tools', tagline: 'Run your business on the go', icon: 'business_center', theme: light('#2563EB', '#0EA5E9', 'minimal', 12), tabKinds: [['lead', 'order'], ['invoice', 'payment', 'transaction'], ['employee', 'task']], homeLabel: 'Dashboard' },
   generic: { id: 'generic', label: 'App', tagline: 'Everything in one place', icon: 'apps', theme: light('#FF6C37', '#0EA5E9', 'soft', 16), tabKinds: [], homeLabel: 'Home' },
 };
 
