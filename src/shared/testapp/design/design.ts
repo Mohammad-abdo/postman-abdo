@@ -1,6 +1,9 @@
 import { ActionDef, ApiModel, AppSchema } from '../types';
 import { AppDesign, CardStyle, DesignEntity, DesignOp, DesignScreen, DesignSection, DomainId, EntityKind, FieldRoles, Intent, SectionType } from './design.types';
 import { Classified, classifyEndpoint, commonPrefix, exampleBody, fieldRoles, findLists, findRecord, isObj, kindOf, singular, tokens } from './entities';
+import { buildAuth } from './auth';
+import { buildRelations, enrichLists, folderServices } from './lists';
+import { sampleProfile, sampleRows } from './sample';
 import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './lexicon';
 
 /**
@@ -284,7 +287,7 @@ const TOP_SECTIONS: SectionType[] = ['greeting', 'search', 'status'];
 const NOT_ON_HOME = new Set<EntityKind>(['user', 'setting', 'cart']);
 const COMPOSITE_SECTION: Partial<Record<CardStyle, SectionType>> = { banner: 'hero', chip: 'chips', product: 'grid', venue: 'rail', course: 'rail', event: 'rail', person: 'rail' };
 
-function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, composite: Classified[], actionOf: (key: string) => ActionDef | undefined, tabFor: (entity: string) => string | undefined) {
+function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, composite: Classified[], actionOf: (key: string) => ActionDef | undefined, tabFor: (entity: string) => string | undefined, services: NonNullable<DesignSection['items']> = []) {
   const sections: DesignSection[] = [];
   const used = new Set<string>();
   const all = Object.values(entities);
@@ -312,7 +315,9 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
     }
   }
 
-  for (const spec of HOME[domain]) {
+  // Collections organised in feature folders ("Towing", "Spare parts"…) get those as the app's services.
+  const specs = HOME[domain].some((s) => s.type === 'shortcuts') || services.length < 3 ? HOME[domain] : [...HOME[domain].filter((s) => TOP_SECTIONS.includes(s.type)), { type: 'shortcuts' as const }, ...HOME[domain].filter((s) => !TOP_SECTIONS.includes(s.type))];
+  for (const spec of specs) {
     if (sections.length >= MAX_HOME_SECTIONS) break;
     if (spec.type === 'greeting' || spec.type === 'search' || spec.type === 'status') {
       if (spec.type === 'search' && !all.some((e) => listOp(e))) continue;
@@ -325,6 +330,10 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
       continue;
     }
     if (spec.type === 'shortcuts') {
+      if (services.length >= 2) {
+        add({ type: 'shortcuts', title: 'Services', items: services });
+        continue;
+      }
       const items = domain === 'generic'
         ? all.filter((e) => listOp(e) && e.kind !== 'user').slice(0, 8).map((e) => ({ label: e.plural, icon: e.icon, entity: e.id }))
         : all.flatMap((e) => e.ops.filter((o) => o.intent === 'create').map((o) => ({ label: o.label, icon: e.icon, action: o.action, entity: e.id }))).slice(0, 4);
@@ -370,6 +379,34 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
   return sections.map((s, i) => ({ s, i })).sort((a, b) => top(a.s.type) - top(b.s.type) || a.i - b.i).map(({ s }, i) => ({ ...s, id: `home.${i}` }));
 }
 
+/* ------------------------------------ samples ------------------------------------ */
+
+/** Lists with no saved response get demo rows (and roles read from them) so screens are never blank. */
+function addSamples(entities: Record<string, DesignEntity>, domain: DomainId, classified: Classified[]) {
+  const byKey = new Map(classified.map((c) => [c.endpoint.key, c.endpoint]));
+  for (const entity of Object.values(entities)) {
+    for (const op of entity.ops) {
+      const endpoint = byKey.get(op.endpoint);
+      if (!endpoint || exampleBody(endpoint) !== undefined) continue;
+      if (op.intent === 'me') {
+        op.sample = [sampleProfile()];
+        op.roles = { ...fieldRoles(op.sample[0] as Record<string, unknown>), ...op.roles };
+        continue;
+      }
+      if (op.intent !== 'list' || op.sample) continue;
+      const rows = sampleRows(entity.kind, domain, entity.label);
+      if (!rows) continue;
+      op.sample = rows;
+      op.roles = { ...fieldRoles(rows[0] as Record<string, unknown>), ...op.roles };
+    }
+    const list = entity.ops.find((o) => o.intent === 'list' && o.sample);
+    if (list && !entity.roles.title) {
+      entity.roles = { ...list.roles, ...entity.roles };
+      entity.card = cardFor(entity.kind, entity.roles);
+    }
+  }
+}
+
 /* ------------------------------------- build ------------------------------------- */
 
 export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' | 'app'>): AppDesign {
@@ -384,18 +421,13 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   const jobs = domain.id === 'delivery' || domain.id === 'ride';
   const entities = buildEntities(jobs ? classified.map((c) => (c.kind === 'assignment' ? { ...c, kind: 'delivery' as EntityKind } : c)) : classified, actionOf);
 
-  // auth
-  const authOp = (intent: Intent) => classified.find((c) => c.intent === intent && actionOf(c.endpoint.key));
+  enrichLists(entities, classified, actionOf);
+  buildRelations(entities);
+  addSamples(entities, domain.id, classified);
+
+  // auth: password logins, phone + code flows, registrations
   const profile = entities.profile;
-  const auth: AppDesign['auth'] = {
-    login: authOp('login') && actionOf(authOp('login')!.endpoint.key)!.id,
-    register: authOp('register') && actionOf(authOp('register')!.endpoint.key)!.id,
-    otp: authOp('otp') && actionOf(authOp('otp')!.endpoint.key)!.id,
-    logout: authOp('logout') && actionOf(authOp('logout')!.endpoint.key)!.id,
-    me: profile?.ops.find((o) => o.intent === 'me')?.action,
-    updateProfile: profile?.ops.find((o) => o.intent === 'updateProfile')?.action,
-    required: false,
-  };
+  const auth = buildAuth(classified, actionOf, profile?.ops || []);
   const protectedShare = model.endpoints.filter((e) => e.auth.type && e.auth.type !== 'noauth').length / Math.max(model.endpoints.length, 1);
   auth.required = !!auth.login && protectedShare >= 0.3;
 
@@ -430,7 +462,7 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
     id: 'home',
     kind: 'home',
     title: def.homeLabel,
-    sections: composeHome(domain.id, entities, classified.filter((c) => c.intent === 'composite'), actionOf, tabFor),
+    sections: composeHome(domain.id, entities, classified.filter((c) => c.intent === 'composite'), actionOf, tabFor, folderServices(classified, entities)),
   };
   screens.profile = { id: 'profile', kind: 'profile', title: 'Profile' };
   tabs.push({ id: 'profile', label: auth.me || auth.login ? 'Profile' : 'More', icon: auth.me || auth.login ? 'person' : 'menu', screen: 'profile' });
