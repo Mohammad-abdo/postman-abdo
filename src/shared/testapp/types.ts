@@ -1,4 +1,5 @@
 /** Shared data shapes of the Collection-to-Test-App generator. Pure data, no I/O. */
+import type { AppDesign } from './design/design.types';
 
 export type Provenance = 'documented' | 'inferred' | 'user' | 'ai' | 'unknown';
 
@@ -231,6 +232,8 @@ export interface AppSchema {
   review: { endpoint: string; reason: string }[];
   conflicts: Conflict[];
   trace: TraceEntry[];
+  /** How the app should look as a real mobile app (domain, theme, tabs, screens). */
+  design?: AppDesign;
 }
 
 export interface Override {

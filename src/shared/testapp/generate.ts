@@ -1,5 +1,6 @@
 import { analyzeCollection } from './analyzer';
 import { buildContract } from './contract';
+import { buildDesign } from './design/design';
 import { CustomRule, evaluateCustomRules } from './custom-rules';
 import { sha256 } from './util';
 import { buildGraph } from './relations';
@@ -114,6 +115,7 @@ export function generateApp(collection: unknown, opts: GenerateOptions & { sourc
     conflicts: mapped.conflicts,
     trace: mapped.trace,
   };
+  schema.design = buildDesign(model, schema);
 
   const count = (s: string) => Object.values(schema.dispositions).filter((d) => d.state === s).length;
   return {
