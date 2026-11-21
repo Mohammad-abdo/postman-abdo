@@ -157,3 +157,20 @@ describe('rules and devices', () => {
     assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'banner', device: 'watch' }] }).success, false);
   });
 });
+
+describe('screens: item page, list page, sign-in, transitions', () => {
+  it('accepts detail, list, login and transition settings', () => {
+    const ok = customizationSchema.safeParse({
+      v: 1,
+      theme: { transition: 'fade' },
+      login: { title: 'Hi', subtitle: 'Welcome', image: 'https://cdn.example.com/a.jpg', style: 'cover', guest: false },
+      entities: { product: { detail: { order: ['head', 'image'], hide: ['info'], image: 'inset', cta: 'inline' }, list: { layout: 'grid', columns: 3, search: false, fab: false } } },
+    });
+    assert.equal(ok.success, true);
+  });
+  it('rejects unknown parts and non-https cover photos', () => {
+    assert.equal(customizationSchema.safeParse({ v: 1, entities: { p: { detail: { order: ['footer'] } } } }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, login: { image: 'http://x.com/a.jpg' } }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, entities: { p: { list: { columns: 9 } } } }).success, false);
+  });
+});

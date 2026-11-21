@@ -136,6 +136,7 @@ export const customizationSchema = z
         headerStyle: z.enum(['large', 'centered', 'compact']),
         cardStyle: z.enum(['shadow', 'outline', 'flat', 'glass']),
         scale: z.number().min(0.8).max(1.3),
+        transition: z.enum(['slide', 'fade', 'zoom', 'none']),
         buttonStyle: z.enum(['rounded', 'pill', 'square']),
         motion: z.enum(['none', 'subtle', 'lively']),
         pattern: z.enum(['none', 'dots', 'grid', 'waves']),
@@ -150,6 +151,19 @@ export const customizationSchema = z
     dir: z.enum(['ltr', 'rtl']).optional(),
     /** The screen shown while the app opens. `duration` in ms (0 skips it). */
     splash: z.object({ style: z.enum(['brand', 'gradient', 'minimal']), duration: z.number().int().min(0).max(4000) }).partial().strict().optional(),
+    /** The sign-in screen. */
+    login: z
+      .object({
+        title: text(60),
+        subtitle: text(120),
+        hint: text(160),
+        image: httpsUrl,
+        style: z.enum(['split', 'plain', 'cover']),
+        guest: z.boolean(),
+      })
+      .partial()
+      .strict()
+      .optional(),
     /** Custom CSS for the whole app (scoped to it). */
     css: css.optional(),
     /** The phone the design is presented on (viewers can still switch). */
@@ -169,7 +183,26 @@ export const customizationSchema = z
     tabs: z.array(z.object({ id, label: text(30), icon, screen: text(160), hidden: z.boolean().optional() }).strict()).max(8).optional(),
     home: z.array(section).max(40).optional(),
     pages: z.array(z.object({ id, title: text(60), icon, background: color.optional(), hideHeader: z.boolean().optional(), sections: z.array(section).max(40) }).strict()).max(10).optional(),
-    entities: z.record(id, z.object({ label: text(40), plural: text(40), icon, card: z.enum(CARDS), roles, hiddenFields: z.array(text(60)).max(80), fieldLabels: z.record(text(60), text(40)) }).partial().strict()).optional(),
+    entities: z.record(id, z.object({ label: text(40), plural: text(40), icon, card: z.enum(CARDS), roles,
+          hiddenFields: z.array(text(60)).max(80),
+          fieldLabels: z.record(text(60), text(40)),
+          /** Item page: order and visibility of its parts, picture and button style. */
+          detail: z
+            .object({
+              order: z.array(z.enum(['image', 'head', 'address', 'description', 'lines', 'info', 'related'])).max(7),
+              hide: z.array(z.enum(['image', 'head', 'address', 'description', 'lines', 'info', 'related'])).max(7),
+              image: z.enum(['full', 'inset']),
+              cta: z.enum(['bar', 'inline']),
+            })
+            .partial()
+            .strict(),
+          /** Browse screen: layout and which tools show. */
+          list: z.object({ layout: z.enum(['grid', 'row']), columns: z.number().int().min(1).max(4), search: z.boolean(), filters: z.boolean(), segments: z.boolean(), fab: z.boolean() }).partial().strict(),
+        })
+        .partial()
+        .strict()
+    )
+    .optional(),
     ctas: z.record(id, z.object({ label: text(40), hidden: z.boolean() }).partial().strict()).optional(),
   })
   .strict()

@@ -209,6 +209,8 @@ export interface DesignEntity {
   /** Detail-page fields the owner hid, and the labels they renamed. */
   hiddenFields?: string[];
   fieldLabels?: Record<string, string>;
+  detail?: { order?: string[]; hide?: string[]; image?: 'full' | 'inset'; cta?: 'bar' | 'inline' };
+  list?: { layout?: 'grid' | 'row'; columns?: number; search?: boolean; filters?: boolean; segments?: boolean; fab?: boolean };
 }
 
 export type SectionType =
@@ -301,6 +303,7 @@ export interface DesignTheme {
   cardStyle?: 'shadow' | 'outline' | 'flat' | 'glass';
   /** Text size multiplier (0.85 – 1.25). */
   scale?: number;
+  transition?: 'slide' | 'fade' | 'zoom' | 'none';
   buttonStyle?: 'rounded' | 'pill' | 'square';
   motion?: 'none' | 'subtle' | 'lively';
   pattern?: 'none' | 'dots' | 'grid' | 'waves';
@@ -318,6 +321,7 @@ export interface AppDesign {
   /** Extra pages built in the design studio (shown as tabs that point at `page.<id>`). */
   pages?: { id: string; title: string; icon: string; background?: string; hideHeader?: boolean; sections: DesignSection[] }[];
   theme: DesignTheme;
+  login?: { title?: string; subtitle?: string; hint?: string; image?: string; style?: 'split' | 'plain' | 'cover'; guest?: boolean };
   splash?: { style?: 'brand' | 'gradient' | 'minimal'; duration?: number };
   auth: { login?: string; register?: string; otp?: string; logout?: string; me?: string; updateProfile?: string; required: boolean; flows?: { login?: AuthStep[]; register?: AuthStep[] } };
   tabs: { id: string; label: string; icon: string; screen: string }[];
