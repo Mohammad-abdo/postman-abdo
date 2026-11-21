@@ -68,10 +68,18 @@ export const limitsService = {
   /** Counts executed requests towards today's quota; throws once the quota is used up. */
   async consumeRequests(userId: string, count: number, kind: 'requests' | 'runs' = 'requests') {
     const limits = await this.forUser(userId);
-    const usage = await prisma.usageDaily.upsert({
-      where: { userId_date: { userId, date: today() } },
-      create: { userId, date: today(), requests: count, runs: kind === 'runs' ? 1 : 0 },
-      update: { requests: { increment: count }, ...(kind === 'runs' ? { runs: { increment: 1 } } : {}) },
+    const date = today();
+    const bump = () =>
+      prisma.usageDaily.upsert({
+        where: { userId_date: { userId, date } },
+        create: { userId, date, requests: count, runs: kind === 'runs' ? 1 : 0 },
+        update: { requests: { increment: count }, ...(kind === 'runs' ? { runs: { increment: 1 } } : {}) },
+      });
+    // Several requests of one person can arrive together (a screen loads many endpoints at once). When two of them
+    // try to create today's row at the same moment, one hits the unique key; by then the row exists, so run it again.
+    const usage = await bump().catch((e) => {
+      if (e?.code !== 'P2002') throw e;
+      return bump();
     });
     if (usage.requests > limits.maxRequestsPerDay) throw LimitReached(`Daily limit of ${limits.maxRequestsPerDay} requests reached. It resets at midnight UTC.`);
   },
