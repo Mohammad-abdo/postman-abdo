@@ -258,6 +258,8 @@ export interface DesignSection {
   columns?: number;
   visibility?: 'all' | 'signedIn' | 'guest';
   hidden?: boolean;
+  showIf?: { field: string; op: 'eq' | 'neq' | 'contains' | 'gt' | 'lt' | 'empty' | 'notEmpty'; value?: string };
+  device?: 'all' | 'phone' | 'wide';
   qa?: { q: string; a: string }[];
   images?: string[];
   until?: string;

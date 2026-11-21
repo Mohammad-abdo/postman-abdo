@@ -45,6 +45,10 @@ const section = z
     visibility: z.enum(['all', 'signedIn', 'guest']).optional(),
     /** Entrance animation of the section. */
     animate: z.enum(['none', 'fade', 'slide', 'pop']).optional(),
+    /** Shown only when the rule holds: `field` is `count`, `me.<field>` or a field of the section's first row. */
+    showIf: z.object({ field: text(80), op: z.enum(['eq', 'neq', 'contains', 'gt', 'lt', 'empty', 'notEmpty']), value: text(100).optional() }).strict().optional(),
+    /** Which screens show it: phones, or wide screens (tablets, foldables). */
+    device: z.enum(['all', 'phone', 'wide']).optional(),
     /** Hidden from the running app (still editable in the studio). */
     hidden: z.boolean().optional(),
     /** Fixed request values (query/path inputs) sent when the section loads its endpoint. */

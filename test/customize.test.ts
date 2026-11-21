@@ -149,3 +149,11 @@ describe('advanced blocks', () => {
     assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'd', type: 'metrics', metrics: Array.from({ length: 9 }, () => ({ label: 'a', value: 'b' })) }] }).success, false);
   });
 });
+
+describe('rules and devices', () => {
+  it('accepts showIf and device and rejects unknown operators', () => {
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'banner', device: 'wide', showIf: { field: 'count', op: 'gt', value: '0' } }] }).success, true);
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'banner', showIf: { field: 'x', op: 'matches' } }] }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'banner', device: 'watch' }] }).success, false);
+  });
+});
