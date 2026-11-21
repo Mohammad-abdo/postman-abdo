@@ -95,3 +95,21 @@ describe('app design: more kinds of business, each with its own look', () => {
     assert.equal(d.theme.font, 'Cairo');
   });
 });
+
+describe('finishing touches', () => {
+  it('accepts the new theme, splash, audience, animation and field options', () => {
+    const ok = customizationSchema.safeParse({
+      v: 1,
+      theme: { buttonStyle: 'pill', motion: 'lively', pattern: 'dots', gradient: 'vivid' },
+      splash: { style: 'gradient', duration: 1500 },
+      home: [{ id: 'a', type: 'insights', entity: 'orders', visibility: 'signedIn', animate: 'slide', style: { background: '#112233', background2: '#445566', border: true } }],
+      entities: { orders: { hiddenFields: ['notes'], fieldLabels: { total: 'Amount due' } } },
+    });
+    assert.equal(ok.success, true);
+  });
+  it('rejects unknown values', () => {
+    assert.equal(customizationSchema.safeParse({ v: 1, theme: { buttonStyle: 'blob' } }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, splash: { duration: 99999 } }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'text', visibility: 'nobody' }] }).success, false);
+  });
+});
