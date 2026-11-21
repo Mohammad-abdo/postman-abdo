@@ -231,7 +231,11 @@ export type SectionType =
   | 'button'
   | 'banner'
   | 'spacer'
-  | 'insights';
+  | 'insights'
+  | 'faq'
+  | 'gallery'
+  | 'countdown'
+  | 'metrics';
 
 export interface DesignSection {
   id: string;
@@ -254,6 +258,10 @@ export interface DesignSection {
   columns?: number;
   visibility?: 'all' | 'signedIn' | 'guest';
   hidden?: boolean;
+  qa?: { q: string; a: string }[];
+  images?: string[];
+  until?: string;
+  metrics?: { label: string; value: string }[];
   values?: Record<string, string>;
   where?: { field: string; op: 'eq' | 'neq' | 'contains' | 'gt' | 'lt'; value: string }[];
   sort?: { by: string; dir: 'asc' | 'desc' };

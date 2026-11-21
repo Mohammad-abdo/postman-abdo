@@ -129,3 +129,23 @@ describe('data binding and item look', () => {
     assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'grid', style: { opacity: 5 } }] }).success, false);
   });
 });
+
+describe('advanced blocks', () => {
+  it('accepts faq, gallery, countdown and metrics blocks', () => {
+    const ok = customizationSchema.safeParse({
+      v: 1,
+      home: [
+        { id: 'a', type: 'faq', qa: [{ q: 'Why?', a: 'Because.' }] },
+        { id: 'b', type: 'gallery', images: ['https://cdn.example.com/a.jpg'] },
+        { id: 'c', type: 'countdown', until: '2027-01-01T10:00' },
+        { id: 'd', type: 'metrics', metrics: [{ label: 'Customers', value: '10k' }] },
+        { id: 'e', type: 'text', body: 'Hi {{me.name}}', action: 'send.x' },
+      ],
+    });
+    assert.equal(ok.success, true);
+  });
+  it('rejects non-https gallery images and oversized lists', () => {
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'b', type: 'gallery', images: ['http://x.com/a.jpg'] }] }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'd', type: 'metrics', metrics: Array.from({ length: 9 }, () => ({ label: 'a', value: 'b' })) }] }).success, false);
+  });
+});

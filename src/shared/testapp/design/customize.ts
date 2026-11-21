@@ -25,7 +25,7 @@ const id = z.string().regex(/^[\w.:#\- ]{1,160}$/);
 const roles = z.record(text(30), text(120));
 const values = z.record(text(60), text(200));
 
-const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video', 'insights'] as const;
+const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video', 'insights', 'faq', 'gallery', 'countdown', 'metrics'] as const;
 const CARDS = ['product', 'venue', 'course', 'order', 'person', 'post', 'trip', 'transaction', 'article', 'event', 'banner', 'chip', 'tile'] as const;
 const STYLES = ['soft', 'bold', 'minimal', 'playful', 'glass', 'elegant', 'brutal', 'neon', 'classic'] as const;
 
@@ -98,6 +98,14 @@ const section = z
       .optional(),
     /** `code` sections: HTML/CSS/JS run in a sandboxed frame (no access to the page, cookies or storage). */
     code: z.object({ html: z.string().max(CODE_MAX), css: z.string().max(CODE_MAX), js: z.string().max(CODE_MAX), height: z.number().int().min(40).max(2000) }).partial().strict().optional(),
+    /** `faq`: questions and answers. */
+    qa: z.array(z.object({ q: text(200), a: text(1000) }).strict()).max(20).optional(),
+    /** `gallery`: https images. */
+    images: z.array(httpsUrl).max(12).optional(),
+    /** `countdown`: the moment it counts down to (ISO date-time). */
+    until: text(40).optional(),
+    /** `metrics`: key numbers typed by hand. */
+    metrics: z.array(z.object({ label: text(40), value: text(40) }).strict()).max(8).optional(),
     /** `video` sections: an https video file. */
     video: httpsUrl.optional(),
   })
