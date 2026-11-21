@@ -25,7 +25,7 @@ const id = z.string().regex(/^[\w.:#\- ]{1,160}$/);
 const roles = z.record(text(30), text(120));
 const values = z.record(text(60), text(200));
 
-const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video'] as const;
+const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video', 'insights'] as const;
 const CARDS = ['product', 'venue', 'course', 'order', 'person', 'post', 'trip', 'transaction', 'article', 'event', 'banner', 'chip', 'tile'] as const;
 const STYLES = ['soft', 'bold', 'minimal', 'playful', 'glass', 'elegant', 'brutal', 'neon', 'classic'] as const;
 
@@ -41,6 +41,10 @@ const section = z
     card: z.enum(CARDS).optional(),
     limit: z.number().int().min(1).max(50).optional(),
     seeAll: text(160).optional(),
+    /** Who sees the section: everyone, signed-in people or guests. */
+    visibility: z.enum(['all', 'signedIn', 'guest']).optional(),
+    /** Entrance animation of the section. */
+    animate: z.enum(['none', 'fade', 'slide', 'pop']).optional(),
     columns: z.number().int().min(1).max(3).optional(),
     body: text(1000).optional(),
     image: httpsUrl.optional(),
@@ -50,7 +54,10 @@ const section = z
     style: z
       .object({
         background: color,
+        /** Second colour: the background becomes a gradient from `background` to this. */
+        background2: color,
         color,
+        border: z.boolean(),
         padding: z.number().min(0).max(48),
         radius: z.number().min(0).max(40),
         align: z.enum(['start', 'center', 'end']),
@@ -89,6 +96,10 @@ export const customizationSchema = z
         headerStyle: z.enum(['large', 'centered', 'compact']),
         cardStyle: z.enum(['shadow', 'outline', 'flat', 'glass']),
         scale: z.number().min(0.8).max(1.3),
+        buttonStyle: z.enum(['rounded', 'pill', 'square']),
+        motion: z.enum(['none', 'subtle', 'lively']),
+        pattern: z.enum(['none', 'dots', 'grid', 'waves']),
+        gradient: z.enum(['none', 'soft', 'vivid']),
         iconStyle: z.enum(['filled', 'outlined', 'rounded', 'sharp', 'twotone']),
         template: text(60),
       })
@@ -97,6 +108,8 @@ export const customizationSchema = z
       .optional(),
     brand: z.object({ name: text(60), tagline: text(120), icon, logo: z.union([httpsUrl, z.literal('')]) }).partial().strict().optional(),
     dir: z.enum(['ltr', 'rtl']).optional(),
+    /** The screen shown while the app opens. `duration` in ms (0 skips it). */
+    splash: z.object({ style: z.enum(['brand', 'gradient', 'minimal']), duration: z.number().int().min(0).max(4000) }).partial().strict().optional(),
     /** Custom CSS for the whole app (scoped to it). */
     css: css.optional(),
     /** The phone the design is presented on (viewers can still switch). */
@@ -116,7 +129,7 @@ export const customizationSchema = z
     tabs: z.array(z.object({ id, label: text(30), icon, screen: text(160), hidden: z.boolean().optional() }).strict()).max(8).optional(),
     home: z.array(section).max(40).optional(),
     pages: z.array(z.object({ id, title: text(60), icon, sections: z.array(section).max(40) }).strict()).max(10).optional(),
-    entities: z.record(id, z.object({ label: text(40), plural: text(40), icon, card: z.enum(CARDS), roles }).partial().strict()).optional(),
+    entities: z.record(id, z.object({ label: text(40), plural: text(40), icon, card: z.enum(CARDS), roles, hiddenFields: z.array(text(60)).max(80), fieldLabels: z.record(text(60), text(40)) }).partial().strict()).optional(),
     ctas: z.record(id, z.object({ label: text(40), hidden: z.boolean() }).partial().strict()).optional(),
   })
   .strict()

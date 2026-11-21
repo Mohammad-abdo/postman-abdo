@@ -206,6 +206,9 @@ export interface DesignEntity {
    */
   relations?: DesignRelation[];
   ctas: { label: string; action: string; style: 'primary' | 'secondary' | 'danger'; icon: string; prefill?: Record<string, string> }[];
+  /** Detail-page fields the owner hid, and the labels they renamed. */
+  hiddenFields?: string[];
+  fieldLabels?: Record<string, string>;
 }
 
 export type SectionType =
@@ -227,7 +230,8 @@ export type SectionType =
   | 'image'
   | 'button'
   | 'banner'
-  | 'spacer';
+  | 'spacer'
+  | 'insights';
 
 export interface DesignSection {
   id: string;
@@ -248,6 +252,8 @@ export interface DesignSection {
   target?: { entity?: string; action?: string; page?: string; values?: Record<string, string> };
   /** `grid`/`rail`/`list`: columns for grids (2 or 3). */
   columns?: number;
+  visibility?: 'all' | 'signedIn' | 'guest';
+  animate?: 'none' | 'fade' | 'slide' | 'pop';
   /** Shortcut buttons (type `shortcuts`). */
   items?: { label: string; icon: string; entity?: string; action?: string; values?: Record<string, string> }[];
 }
@@ -280,6 +286,10 @@ export interface DesignTheme {
   cardStyle?: 'shadow' | 'outline' | 'flat' | 'glass';
   /** Text size multiplier (0.85 – 1.25). */
   scale?: number;
+  buttonStyle?: 'rounded' | 'pill' | 'square';
+  motion?: 'none' | 'subtle' | 'lively';
+  pattern?: 'none' | 'dots' | 'grid' | 'waves';
+  gradient?: 'none' | 'soft' | 'vivid';
 }
 
 export type ThemeStyle = 'soft' | 'bold' | 'minimal' | 'playful' | 'glass' | 'elegant' | 'brutal' | 'neon' | 'classic';
@@ -293,6 +303,7 @@ export interface AppDesign {
   /** Extra pages built in the design studio (shown as tabs that point at `page.<id>`). */
   pages?: { id: string; title: string; icon: string; sections: DesignSection[] }[];
   theme: DesignTheme;
+  splash?: { style?: 'brand' | 'gradient' | 'minimal'; duration?: number };
   auth: { login?: string; register?: string; otp?: string; logout?: string; me?: string; updateProfile?: string; required: boolean; flows?: { login?: AuthStep[]; register?: AuthStep[] } };
   tabs: { id: string; label: string; icon: string; screen: string }[];
   screens: Record<string, DesignScreen>;

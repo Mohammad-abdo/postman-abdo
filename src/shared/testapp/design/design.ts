@@ -13,7 +13,7 @@ import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './
  */
 
 /** Bump when the design engine changes so saved apps are re-designed when opened. */
-export const DESIGN_VERSION = 3;
+export const DESIGN_VERSION = 4;
 const MAX_HOME_SECTIONS = 8;
 const MIN_DOMAIN_SCORE = 2.5;
 
@@ -291,6 +291,9 @@ const HOME: Record<DomainId, Spec[]> = {
   generic: [{ type: 'greeting' }, { type: 'shortcuts' }],
 };
 
+/** Kinds whose lists read well as numbers: totals and a breakdown by status. */
+const INSIGHT_KINDS: EntityKind[] = ['order', 'transaction', 'payment', 'invoice', 'booking', 'delivery', 'trip', 'task', 'lead'];
+const WORK_DOMAINS: DomainId[] = ['delivery', 'ride', 'tasks', 'business', 'finance', 'jobs'];
 const SECTION_RANK: SectionType[] = ['hero', 'chips', 'rail', 'grid', 'list'];
 const TOP_SECTIONS: SectionType[] = ['greeting', 'search', 'status'];
 /** Kinds that belong to their own screen (profile, cart, settings) rather than the home feed. */
@@ -383,6 +386,19 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
     used.add(entity.id);
     const type: SectionType = entity.card === 'product' ? 'grid' : ['venue', 'course', 'event', 'person'].includes(entity.card) ? 'rail' : 'list';
     add({ type, title: entity.plural, entity: entity.id, action: op.action, dataPath: op.dataPath, roles: op.roles, card: entity.card, limit: type === 'list' ? 4 : 6, seeAll: tabFor(entity.id) });
+  }
+  // Collections whose items have a status or an amount (orders, payments, tasks…) get a live overview of them.
+  if (!sections.some((s) => ['stats', 'balance', 'insights'].includes(s.type))) {
+    const subject = all
+      .filter((e) => INSIGHT_KINDS.includes(e.kind) && listOp(e) && !isLookup(e) && (e.roles.status || e.roles.price))
+      .sort((a, b) => INSIGHT_KINDS.indexOf(a.kind) - INSIGHT_KINDS.indexOf(b.kind))[0];
+    const op = listOp(subject);
+    if (subject && op) {
+      const insights: DesignSection = { id: 'home.insights', type: 'insights', title: `${subject.label} overview`, entity: subject.id, action: op.action, dataPath: op.dataPath, roles: op.roles };
+      // work apps open on their numbers; shops and media keep their content first
+      if (WORK_DOMAINS.includes(domain)) sections.unshift(insights);
+      else sections.push(insights);
+    }
   }
   // Greeting, search and the online toggle always sit at the top, above content from a /home endpoint.
   const top = (t: SectionType) => (TOP_SECTIONS.includes(t) ? TOP_SECTIONS.indexOf(t) : TOP_SECTIONS.length);
