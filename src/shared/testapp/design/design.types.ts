@@ -253,6 +253,11 @@ export interface DesignSection {
   /** `grid`/`rail`/`list`: columns for grids (2 or 3). */
   columns?: number;
   visibility?: 'all' | 'signedIn' | 'guest';
+  hidden?: boolean;
+  values?: Record<string, string>;
+  where?: { field: string; op: 'eq' | 'neq' | 'contains' | 'gt' | 'lt'; value: string }[];
+  sort?: { by: string; dir: 'asc' | 'desc' };
+  look?: { layout?: 'scroll' | 'stack' | 'grid' | 'wrap'; shape?: 'default' | 'circle' | 'square' | 'pill' | 'card' | 'banner'; size?: 'sm' | 'md' | 'lg'; columns?: number; gap?: number; aspect?: '1:1' | '4:3' | '16:9' | '3:4'; fit?: 'cover' | 'contain'; hide?: string[] };
   animate?: 'none' | 'fade' | 'slide' | 'pop';
   /** Shortcut buttons (type `shortcuts`). */
   items?: { label: string; icon: string; entity?: string; action?: string; values?: Record<string, string> }[];
@@ -301,7 +306,7 @@ export interface AppDesign {
   /** Writing direction: `rtl` for collections written in Arabic. */
   dir?: 'ltr' | 'rtl';
   /** Extra pages built in the design studio (shown as tabs that point at `page.<id>`). */
-  pages?: { id: string; title: string; icon: string; sections: DesignSection[] }[];
+  pages?: { id: string; title: string; icon: string; background?: string; hideHeader?: boolean; sections: DesignSection[] }[];
   theme: DesignTheme;
   splash?: { style?: 'brand' | 'gradient' | 'minimal'; duration?: number };
   auth: { login?: string; register?: string; otp?: string; logout?: string; me?: string; updateProfile?: string; required: boolean; flows?: { login?: AuthStep[]; register?: AuthStep[] } };

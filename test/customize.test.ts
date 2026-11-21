@@ -113,3 +113,19 @@ describe('finishing touches', () => {
     assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'text', visibility: 'nobody' }] }).success, false);
   });
 });
+
+describe('data binding and item look', () => {
+  it('accepts an endpoint binding with values, filters, sorting and item look', () => {
+    const ok = customizationSchema.safeParse({
+      v: 1,
+      home: [{ id: 'a', type: 'chips', action: 'send.x', values: { categoryId: '3' }, where: [{ field: 'active', op: 'eq', value: 'true' }], sort: { by: 'name', dir: 'asc' }, hidden: true, look: { layout: 'stack', shape: 'circle', size: 'lg', columns: 3, gap: 8, aspect: '1:1', fit: 'contain', hide: ['price'] }, style: { marginTop: 12, opacity: 0.8, titleSize: 20, borderColor: '#cccccc' } }],
+      pages: [{ id: 'p', title: 'Page', icon: 'home', background: '#f0f0f0', hideHeader: true, sections: [] }],
+    });
+    assert.equal(ok.success, true);
+  });
+  it('rejects bad look values', () => {
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'grid', look: { shape: 'triangle' } }] }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'grid', where: [{ field: 'x', op: 'regex', value: '' }] }] }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'grid', style: { opacity: 5 } }] }).success, false);
+  });
+});

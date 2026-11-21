@@ -45,6 +45,28 @@ const section = z
     visibility: z.enum(['all', 'signedIn', 'guest']).optional(),
     /** Entrance animation of the section. */
     animate: z.enum(['none', 'fade', 'slide', 'pop']).optional(),
+    /** Hidden from the running app (still editable in the studio). */
+    hidden: z.boolean().optional(),
+    /** Fixed request values (query/path inputs) sent when the section loads its endpoint. */
+    values: values.optional(),
+    /** Only rows that match, sorted this way (applied on the device, on whatever the endpoint returns). */
+    where: z.array(z.object({ field: text(60), op: z.enum(['eq', 'neq', 'contains', 'gt', 'lt']), value: text(100) }).strict()).max(3).optional(),
+    sort: z.object({ by: text(60), dir: z.enum(['asc', 'desc']) }).strict().optional(),
+    /** How a list's items are laid out and drawn: circles in a row, a stacked list, a wrapped grid… */
+    look: z
+      .object({
+        layout: z.enum(['scroll', 'stack', 'grid', 'wrap']),
+        shape: z.enum(['default', 'circle', 'square', 'pill', 'card', 'banner']),
+        size: z.enum(['sm', 'md', 'lg']),
+        columns: z.number().int().min(1).max(4),
+        gap: z.number().min(0).max(32),
+        aspect: z.enum(['1:1', '4:3', '16:9', '3:4']),
+        fit: z.enum(['cover', 'contain']),
+        hide: z.array(z.enum(['image', 'title', 'subtitle', 'price', 'rating', 'status', 'date'])).max(7),
+      })
+      .partial()
+      .strict()
+      .optional(),
     columns: z.number().int().min(1).max(3).optional(),
     body: text(1000).optional(),
     image: httpsUrl.optional(),
@@ -59,6 +81,12 @@ const section = z
         color,
         border: z.boolean(),
         padding: z.number().min(0).max(48),
+        marginTop: z.number().min(0).max(80),
+        marginBottom: z.number().min(0).max(80),
+        opacity: z.number().min(0.1).max(1),
+        minHeight: z.number().min(0).max(600),
+        titleSize: z.number().min(10).max(34),
+        borderColor: color,
         radius: z.number().min(0).max(40),
         align: z.enum(['start', 'center', 'end']),
         shadow: z.boolean(),
@@ -128,7 +156,7 @@ export const customizationSchema = z
       .optional(),
     tabs: z.array(z.object({ id, label: text(30), icon, screen: text(160), hidden: z.boolean().optional() }).strict()).max(8).optional(),
     home: z.array(section).max(40).optional(),
-    pages: z.array(z.object({ id, title: text(60), icon, sections: z.array(section).max(40) }).strict()).max(10).optional(),
+    pages: z.array(z.object({ id, title: text(60), icon, background: color.optional(), hideHeader: z.boolean().optional(), sections: z.array(section).max(40) }).strict()).max(10).optional(),
     entities: z.record(id, z.object({ label: text(40), plural: text(40), icon, card: z.enum(CARDS), roles, hiddenFields: z.array(text(60)).max(80), fieldLabels: z.record(text(60), text(40)) }).partial().strict()).optional(),
     ctas: z.record(id, z.object({ label: text(40), hidden: z.boolean() }).partial().strict()).optional(),
   })
