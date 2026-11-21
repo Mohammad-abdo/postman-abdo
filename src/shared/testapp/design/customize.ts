@@ -47,6 +47,10 @@ const section = z
     animate: z.enum(['none', 'fade', 'slide', 'pop']).optional(),
     /** Shown only when the rule holds: `field` is `count`, `me.<field>` or a field of the section's first row. */
     showIf: z.object({ field: text(80), op: z.enum(['eq', 'neq', 'contains', 'gt', 'lt', 'empty', 'notEmpty']), value: text(100).optional() }).strict().optional(),
+    /** A written rule such as `count > 0 && me.role == "vip"` (names: count, me.<field>, fields of the first row). */
+    showExpr: text(300).optional(),
+    /** A/B experiment: only visitors in this bucket see the section. */
+    variant: z.enum(['A', 'B']).optional(),
     /** Which screens show it: phones, or wide screens (tablets, foldables). */
     device: z.enum(['all', 'phone', 'wide']).optional(),
     /** Hidden from the running app (still editable in the studio). */
@@ -149,6 +153,8 @@ export const customizationSchema = z
       .optional(),
     brand: z.object({ name: text(60), tagline: text(120), icon, logo: z.union([httpsUrl, z.literal('')]) }).partial().strict().optional(),
     dir: z.enum(['ltr', 'rtl']).optional(),
+    /** A/B experiment: the share of visitors (percent) who land in variant A. */
+    ab: z.object({ name: text(40), split: z.number().int().min(5).max(95) }).partial().strict().optional(),
     /** The screen shown while the app opens. `duration` in ms (0 skips it). */
     splash: z.object({ style: z.enum(['brand', 'gradient', 'minimal']), duration: z.number().int().min(0).max(4000) }).partial().strict().optional(),
     /** The sign-in screen. */
@@ -180,7 +186,22 @@ export const customizationSchema = z
       .partial()
       .strict()
       .optional(),
-    tabs: z.array(z.object({ id, label: text(30), icon, screen: text(160), hidden: z.boolean().optional() }).strict()).max(8).optional(),
+    tabs: z
+      .array(
+        z
+          .object({
+            id,
+            label: text(30),
+            icon,
+            screen: text(160),
+            hidden: z.boolean().optional(),
+            /** A badge on the tab: a dot, a fixed text, or the number of rows an endpoint returns. */
+            badge: z.object({ mode: z.enum(['count', 'dot', 'text']), action: id.optional(), text: text(6).optional(), hideZero: z.boolean().optional() }).strict().optional(),
+          })
+          .strict()
+      )
+      .max(8)
+      .optional(),
     home: z.array(section).max(40).optional(),
     pages: z.array(z.object({ id, title: text(60), icon, background: color.optional(), hideHeader: z.boolean().optional(), sections: z.array(section).max(40) }).strict()).max(10).optional(),
     entities: z.record(id, z.object({ label: text(40), plural: text(40), icon, card: z.enum(CARDS), roles,

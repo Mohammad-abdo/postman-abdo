@@ -260,6 +260,8 @@ export interface DesignSection {
   columns?: number;
   visibility?: 'all' | 'signedIn' | 'guest';
   hidden?: boolean;
+  showExpr?: string;
+  variant?: 'A' | 'B';
   showIf?: { field: string; op: 'eq' | 'neq' | 'contains' | 'gt' | 'lt' | 'empty' | 'notEmpty'; value?: string };
   device?: 'all' | 'phone' | 'wide';
   qa?: { q: string; a: string }[];
@@ -321,10 +323,11 @@ export interface AppDesign {
   /** Extra pages built in the design studio (shown as tabs that point at `page.<id>`). */
   pages?: { id: string; title: string; icon: string; background?: string; hideHeader?: boolean; sections: DesignSection[] }[];
   theme: DesignTheme;
+  ab?: { name?: string; split?: number };
   login?: { title?: string; subtitle?: string; hint?: string; image?: string; style?: 'split' | 'plain' | 'cover'; guest?: boolean };
   splash?: { style?: 'brand' | 'gradient' | 'minimal'; duration?: number };
   auth: { login?: string; register?: string; otp?: string; logout?: string; me?: string; updateProfile?: string; required: boolean; flows?: { login?: AuthStep[]; register?: AuthStep[] } };
-  tabs: { id: string; label: string; icon: string; screen: string }[];
+  tabs: { id: string; label: string; icon: string; screen: string; badge?: { mode: 'count' | 'dot' | 'text'; action?: string; text?: string; hideZero?: boolean } }[];
   screens: Record<string, DesignScreen>;
   entities: Record<string, DesignEntity>;
   /** Endpoints that fit no entity; still reachable from the developer menu. */

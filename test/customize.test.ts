@@ -174,3 +174,20 @@ describe('screens: item page, list page, sign-in, transitions', () => {
     assert.equal(customizationSchema.safeParse({ v: 1, entities: { p: { list: { columns: 9 } } } }).success, false);
   });
 });
+
+describe('rules, experiments and tab badges', () => {
+  it('accepts a written rule, a variant, the split and tab badges', () => {
+    const ok = customizationSchema.safeParse({
+      v: 1,
+      ab: { name: 'Home test', split: 40 },
+      tabs: [{ id: 'home', label: 'Home', icon: 'home', screen: 'home', badge: { mode: 'count', action: 'send.x', hideZero: true } }, { id: 'p', label: 'Profile', icon: 'person', screen: 'profile', badge: { mode: 'dot' } }],
+      home: [{ id: 'a', type: 'banner', showExpr: 'count > 0 && me.role == "vip"', variant: 'B' }],
+    });
+    assert.equal(ok.success, true);
+  });
+  it('rejects bad variants, splits and badges', () => {
+    assert.equal(customizationSchema.safeParse({ v: 1, home: [{ id: 'a', type: 'banner', variant: 'C' }] }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, ab: { split: 100 } }).success, false);
+    assert.equal(customizationSchema.safeParse({ v: 1, tabs: [{ id: 'h', label: 'H', icon: 'home', screen: 'home', badge: { mode: 'sparkle' } }] }).success, false);
+  });
+});
