@@ -113,25 +113,46 @@ export function explainPrompt(result: TestResult) {
   };
 }
 
+export interface AiTool {
+  name: string;
+  description: string;
+  schema: Record<string, unknown>;
+}
+
 export interface AiCompletion {
   text: string;
+  /** Input of the forced tool call, when a tool was given. */
+  toolInput?: unknown;
   inputTokens: number;
   outputTokens: number;
 }
 
-export type AiProvider = (args: { system: string; user: string; maxTokens: number }) => Promise<AiCompletion>;
+export type AiArgs = { system: string; user: string; maxTokens: number; model?: string; tool?: AiTool };
+export type AiProvider = (args: AiArgs) => Promise<AiCompletion>;
 
-/** Anthropic Messages API. `fetchImpl` is injectable for tests. */
-export function anthropicProvider(cfg: { apiKey: string; model: string }, fetchImpl: typeof fetch = fetch): AiProvider {
-  return async ({ system, user, maxTokens }) => {
-    const res = await fetchImpl('https://api.anthropic.com/v1/messages', {
+/** Anthropic Messages API. `fetchImpl` is injectable for tests. The system prompt is cached; a tool forces structured output. */
+export function anthropicProvider(cfg: { apiKey: string; model: string; baseUrl?: string }, fetchImpl: typeof fetch = fetch): AiProvider {
+  return async ({ system, user, maxTokens, model, tool }) => {
+    const res = await fetchImpl(`${cfg.baseUrl || 'https://api.anthropic.com'}/v1/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: cfg.model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
-      signal: AbortSignal.timeout(30_000),
+      body: JSON.stringify({
+        model: model || cfg.model,
+        max_tokens: maxTokens,
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+        messages: [{ role: 'user', content: user }],
+        ...(tool ? { tools: [{ name: tool.name, description: tool.description, input_schema: tool.schema }], tool_choice: { type: 'tool', name: tool.name } } : {}),
+      }),
+      signal: AbortSignal.timeout(90_000),
     });
     if (!res.ok) throw new Error(`AI provider returned ${res.status}`);
-    const data = (await res.json()) as { content?: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } };
-    return { text: (data.content || []).filter((c) => c.type === 'text').map((c) => c.text || '').join(''), inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0 };
+    const data = (await res.json()) as { content?: { type: string; text?: string; input?: unknown }[]; usage?: { input_tokens?: number; output_tokens?: number } };
+    const content = data.content || [];
+    return {
+      text: content.filter((c) => c.type === 'text').map((c) => c.text || '').join(''),
+      toolInput: content.find((c) => c.type === 'tool_use')?.input,
+      inputTokens: data.usage?.input_tokens ?? 0,
+      outputTokens: data.usage?.output_tokens ?? 0,
+    };
   };
 }

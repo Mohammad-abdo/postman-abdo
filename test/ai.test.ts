@@ -62,7 +62,7 @@ describe('AI assistant safety', () => {
       return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'hi' }], usage: { input_tokens: 10, output_tokens: 5 } }) };
     }) as any);
     const out = await ok({ system: 's', user: 'u', maxTokens: 10 });
-    assert.deepEqual(out, { text: 'hi', inputTokens: 10, outputTokens: 5 });
+    assert.deepEqual({ ...out }, { text: 'hi', toolInput: undefined, inputTokens: 10, outputTokens: 5 });
     assert.equal(seen.init.headers['x-api-key'], 'KEY');
     assert.ok(!seen.init.body.includes('KEY'));
     const bad = anthropicProvider({ apiKey: 'K', model: 'm' }, (async () => ({ ok: false, status: 429 })) as any);

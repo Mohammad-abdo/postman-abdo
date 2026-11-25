@@ -31,7 +31,11 @@ export const env = {
   ai: {
     enabled: bool(process.env.TESTAPP_AI_ENABLED, false) && !!process.env.ANTHROPIC_API_KEY,
     apiKey: process.env.ANTHROPIC_API_KEY || '',
+    /** Override for proxies and local testing. */
+    baseUrl: (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, ''),
     model: process.env.TESTAPP_AI_MODEL || 'claude-sonnet-5-5',
+    /** Cheaper model for short text jobs. */
+    fastModel: process.env.TESTAPP_AI_FAST_MODEL || 'claude-haiku-5-5',
     dailyTokenBudget: Number(process.env.TESTAPP_AI_DAILY_TOKENS) || 50000,
   },
   /** Super admin created/promoted at startup. */

@@ -25,9 +25,9 @@ const id = z.string().regex(/^[\w.:#\- ]{1,160}$/);
 const roles = z.record(text(30), text(120));
 const values = z.record(text(60), text(200));
 
-const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video', 'insights', 'faq', 'gallery', 'countdown', 'metrics'] as const;
-const CARDS = ['product', 'venue', 'course', 'order', 'person', 'post', 'trip', 'transaction', 'article', 'event', 'banner', 'chip', 'tile'] as const;
-const STYLES = ['soft', 'bold', 'minimal', 'playful', 'glass', 'elegant', 'brutal', 'neon', 'classic'] as const;
+export const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video', 'insights', 'faq', 'gallery', 'countdown', 'metrics'] as const;
+export const CARDS = ['product', 'venue', 'course', 'order', 'person', 'post', 'trip', 'transaction', 'article', 'event', 'banner', 'chip', 'tile'] as const;
+export const STYLES = ['soft', 'bold', 'minimal', 'playful', 'glass', 'elegant', 'brutal', 'neon', 'classic'] as const;
 
 const section = z
   .object({

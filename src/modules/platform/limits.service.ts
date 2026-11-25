@@ -69,18 +69,10 @@ export const limitsService = {
   async consumeRequests(userId: string, count: number, kind: 'requests' | 'runs' = 'requests') {
     const limits = await this.forUser(userId);
     const date = today();
-    const bump = () =>
-      prisma.usageDaily.upsert({
-        where: { userId_date: { userId, date } },
-        create: { userId, date, requests: count, runs: kind === 'runs' ? 1 : 0 },
-        update: { requests: { increment: count }, ...(kind === 'runs' ? { runs: { increment: 1 } } : {}) },
-      });
-    // Several requests of one person can arrive together (a screen loads many endpoints at once). When two of them
-    // try to create today's row at the same moment, one hits the unique key; by then the row exists, so run it again.
-    const usage = await bump().catch((e) => {
-      if (e?.code !== 'P2002') throw e;
-      return bump();
-    });
+    const runs = kind === 'runs' ? 1 : 0;
+    // One atomic statement: concurrent requests can never collide on today's row.
+    await prisma.$executeRaw`INSERT INTO UsageDaily (id, userId, date, requests, runs, errors, bytesIn) VALUES (UUID(), ${userId}, ${date}, ${count}, ${runs}, 0, 0) ON DUPLICATE KEY UPDATE requests = requests + ${count}, runs = runs + ${runs}`;
+    const usage = await prisma.usageDaily.findUniqueOrThrow({ where: { userId_date: { userId, date } }, select: { requests: true } });
     if (usage.requests > limits.maxRequestsPerDay) throw LimitReached(`Daily limit of ${limits.maxRequestsPerDay} requests reached. It resets at midnight UTC.`);
   },
 

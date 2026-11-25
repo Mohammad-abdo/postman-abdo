@@ -63,6 +63,17 @@ testAppRoutes.post('/:id/ai/suggest', async (req, res) => {
   audit(req, { action: 'testapp.ai.suggest', targetType: 'testapp', targetId: String(req.params.id), details: { tokens: out.tokens, accepted: out.accepted.length, rejected: out.rejected.length } });
   res.json(out);
 });
+const aiDesignSchema = z.object({ mode: z.enum(['design', 'edit', 'redesign']), prompt: z.string().trim().max(1000).default(''), current: z.any().optional(), focus: z.string().max(200).optional() });
+testAppRoutes.post('/:id/ai/design', validateBody(aiDesignSchema), async (req, res) => {
+  const out = await aiService.design(currentUserId(req), String(req.params.id), req.body);
+  audit(req, { action: 'testapp.ai.design', targetType: 'testapp', targetId: String(req.params.id), details: { mode: req.body.mode, tokens: out.tokens, options: out.proposals.length } });
+  res.json(out);
+});
+testAppRoutes.post('/:id/ai/review', validateBody(z.object({ current: z.any().optional() })), async (req, res) => {
+  const out = await aiService.review(currentUserId(req), String(req.params.id), req.body.current);
+  audit(req, { action: 'testapp.ai.review', targetType: 'testapp', targetId: String(req.params.id), details: { tokens: out.tokens, findings: out.findings.length } });
+  res.json(out);
+});
 testAppRoutes.post('/:id/ai/explain', validateBody(z.object({ runId: z.string().min(1).max(64), testId: z.string().min(1).max(20) })), async (req, res) => {
   const out = await aiService.explain(currentUserId(req), String(req.params.id), req.body.runId, req.body.testId);
   audit(req, { action: 'testapp.ai.explain', targetType: 'testapp', targetId: String(req.params.id), details: { tokens: out.tokens } });
