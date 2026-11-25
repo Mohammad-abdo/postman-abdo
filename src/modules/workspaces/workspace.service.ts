@@ -139,6 +139,32 @@ export const workspaceService = {
     };
   },
 
+  /** Numbers and feeds for the workspace dashboard: recent collections, the team's request usage, extra counts and recent activity. */
+  async insights(userId: string, id: string, days = 14) {
+    await assertWorkspaceMember(userId, id);
+    const DAY = 86_400_000;
+    const since = new Date(Date.now() - (days - 1) * DAY);
+    since.setUTCHours(0, 0, 0, 0);
+    const memberIds = (await prisma.workspaceMember.findMany({ where: { workspaceId: id }, select: { userId: true } })).map((m) => m.userId);
+    const [recent, usage, mocks, monitors, testApps, folders, activity] = await Promise.all([
+      prisma.collection.findMany({ where: { workspaceId: id, deletedAt: null }, orderBy: { updatedAt: 'desc' }, take: 8, select: { id: true, name: true, updatedAt: true, project: { select: { name: true, color: true } }, _count: { select: { requests: true, folders: true } } } }),
+      prisma.usageDaily.groupBy({ by: ['date'], where: { userId: { in: memberIds }, date: { gte: since } }, _sum: { requests: true, runs: true, errors: true } }),
+      prisma.mockServer.count({ where: { collection: { workspaceId: id, deletedAt: null } } }),
+      prisma.monitor.count({ where: { collection: { workspaceId: id, deletedAt: null } } }),
+      prisma.testApp.count({ where: { collection: { workspaceId: id, deletedAt: null } } }),
+      prisma.folder.count({ where: { collection: { workspaceId: id, deletedAt: null } } }),
+      prisma.auditLog.findMany({ where: { targetType: 'workspace', targetId: id }, orderBy: { createdAt: 'desc' }, take: 15, select: { id: true, action: true, actorEmail: true, details: true, createdAt: true } }),
+    ]);
+    const byDay = new Map(usage.map((r) => [r.date.toISOString().slice(0, 10), r._sum]));
+    const series = Array.from({ length: days }, (_, i) => {
+      const date = new Date(since.getTime() + i * DAY).toISOString().slice(0, 10);
+      const s = byDay.get(date);
+      return { date, requests: s?.requests || 0, runs: s?.runs || 0, errors: s?.errors || 0 };
+    });
+    const total = series.reduce((t, d) => ({ requests: t.requests + d.requests, runs: t.runs + d.runs, errors: t.errors + d.errors }), { requests: 0, runs: 0, errors: 0 });
+    return { days, series, total, extra: { mocks, monitors, testApps, folders }, recent, activity };
+  },
+
   /** Everything the sidebar needs in one round trip. */
   async tree(userId: string, id: string) {
     await assertWorkspaceMember(userId, id);

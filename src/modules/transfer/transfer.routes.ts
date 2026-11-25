@@ -12,3 +12,4 @@ transferRoutes.post('/import', validateBody(importSchema), transferController.im
 transferRoutes.post('/import/files', inMemory.array('files'), transferController.importFiles);
 transferRoutes.post('/curl', validateBody(parseCurlSchema), transferController.parseCurl);
 transferRoutes.get('/export/:workspaceId', transferController.exportWorkspace);
+transferRoutes.get('/export/openapi/:collectionId', transferController.exportOpenApi);

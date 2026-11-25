@@ -13,5 +13,6 @@ workspaceRoutes.post('/:id/members', validateBody(addMemberSchema), workspaceCon
 workspaceRoutes.patch('/:id/members/:userId', validateBody(updateMemberSchema), workspaceController.updateMember);
 workspaceRoutes.delete('/:id/members/:userId', workspaceController.removeMember);
 workspaceRoutes.get('/:id/overview', workspaceController.overview);
+workspaceRoutes.get('/:id/insights', workspaceController.insights);
 workspaceRoutes.get('/:id/tree', workspaceController.tree);
 workspaceRoutes.get('/:id/search', workspaceController.search);
