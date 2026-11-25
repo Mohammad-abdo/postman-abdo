@@ -592,3 +592,17 @@ model TestAppAiUsage {
 
   @@unique([workspaceId, day])
 }
+
+/// Daily A/B experiment counts per shared test app: aggregated numbers only, no visitor data.
+model TestAppAbEvent {
+  id         String   @id @default(uuid())
+  testAppId  String
+  experiment String   @db.VarChar(60)
+  bucket     String   @db.VarChar(1)
+  day        DateTime @db.Date
+  views      Int      @default(0)
+  taps       Int      @default(0)
+
+  @@unique([testAppId, experiment, bucket, day])
+  @@index([testAppId])
+}

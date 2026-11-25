@@ -51,6 +51,7 @@ export const DESIGN_SYSTEM = [
   'brand: {name, tagline, icon (material icon name in snake_case), logo (https url)}. tabs item: {id, label, icon, screen, hidden?, badge?}.',
   `section: {id, type (${SECTION_TYPES.join('|')}), title?, entity?, action?, card? (${CARDS.join('|')}), limit?, visibility? all|signedIn|guest, animate? none|fade|slide|pop, hidden?, showExpr?, variant? A|B, device? all|phone|wide}. Every section needs a unique id.`,
   'entities: map of entity id to {label, plural, icon, card, hiddenFields, fieldLabels, detail, list}. pages item: {id, title, icon, sections}.',
+  'When you change theme.mode, also set background, surface, text and muted so they match the new mode and keep text readable (contrast at least 4.5:1).',
   'The result must pass strict validation: unknown keys are rejected. Prefer a small, coherent change over rewriting everything, unless the user asks for a full redesign.',
 ].join('\n');
 
