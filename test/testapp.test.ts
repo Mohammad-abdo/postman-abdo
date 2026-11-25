@@ -230,7 +230,8 @@ describe('mock engine', () => {
     assert.deepEqual(sorted.data.map((r: any) => r.id), [12, 11, 10]);
   });
   it('simulates create / update / delete with state', () => {
-    let { state, token } = login(createInitialState(ctx, 1));
+    const { token, ...rest } = login(createInitialState(ctx, 1));
+    let state = rest.state;
     let r = call(state, { endpoint: 'POST /users', token, body: { name: 'Zed', email: 'z@x.com' } });
     assert.equal(r.result.status, 201);
     const id = (r.result.body as any).data.id;

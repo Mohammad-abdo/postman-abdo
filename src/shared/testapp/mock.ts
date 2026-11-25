@@ -219,7 +219,7 @@ function listResponse(e: Endpoint, rows: Record<string, any>[], query: Record<st
   const sortKey = Object.keys(query).find((k) => SORT_KEYS.test(k));
   if (sortKey && query[sortKey]) {
     let field = query[sortKey];
-    let desc = /^-/.test(field) || /:desc$/i.test(field) || Object.entries(query).some(([k, v]) => DIR_KEYS.test(k) && /^desc/i.test(String(v)));
+    const desc = /^-/.test(field) || /:desc$/i.test(field) || Object.entries(query).some(([k, v]) => DIR_KEYS.test(k) && /^desc/i.test(String(v)));
     field = field.replace(/^[-+]/, '').replace(/:(asc|desc)$/i, '');
     if (out.some((r) => field in r)) {
       out = [...out].sort((a, b) => (desc ? -1 : 1) * compare(a[field], b[field]));

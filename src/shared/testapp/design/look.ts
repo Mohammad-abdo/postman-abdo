@@ -198,7 +198,8 @@ function fromHsl(h: number, sat: number, l: number) {
 }
 /** Lightens a colour until dark button text reads on it (used for dark-mode looks). */
 const readableOnDark = (hex: string) => {
-  let [h, sat, l] = hslOf(hex);
+  const [h, sat, l0] = hslOf(hex);
+  let l = l0;
   let out = hex;
   for (let i = 0; i < 20 && ratio('#04120A', out) < 3; i++) out = fromHsl(h, sat, (l = Math.min(0.9, l + 0.04)));
   return out;
