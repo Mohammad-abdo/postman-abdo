@@ -214,6 +214,7 @@ export interface DesignEntity {
 }
 
 export type SectionType =
+  | 'auto'
   | 'greeting'
   | 'search'
   | 'hero'
@@ -273,6 +274,8 @@ export interface DesignSection {
   sort?: { by: string; dir: 'asc' | 'desc' };
   look?: { layout?: 'scroll' | 'stack' | 'grid' | 'wrap'; shape?: 'default' | 'circle' | 'square' | 'pill' | 'card' | 'banner'; size?: 'sm' | 'md' | 'lg'; columns?: number; gap?: number; aspect?: '1:1' | '4:3' | '16:9' | '3:4'; fit?: 'cover' | 'contain'; hide?: string[] };
   animate?: 'none' | 'fade' | 'slide' | 'pop';
+  /** How an `auto` list is drawn; `auto` lets the data decide. */
+  present?: 'auto' | 'cards' | 'chart' | 'board' | 'timeline' | 'agenda' | 'table' | 'masonry' | 'chat' | 'ranking';
   /** Shortcut buttons (type `shortcuts`). */
   items?: { label: string; icon: string; entity?: string; action?: string; page?: string; values?: Record<string, string> }[];
 }

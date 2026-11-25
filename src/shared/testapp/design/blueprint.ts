@@ -101,8 +101,8 @@ export function areaPages(areas: Area[], entities: Record<string, DesignEntity>,
       if (!ent || !op || (taken.has(ent.id) && !slice) || ['cart', 'setting', 'notification'].includes(ent.kind) || sections.length >= 6) continue;
       taken.add(ent.id);
       used.add(op.action);
-      const type = ent.roles.price || ent.card === 'product' ? 'grid' : ent.roles.image && ['venue', 'course', 'event', 'person'].includes(ent.card) ? 'rail' : ent.roles.image ? 'grid' : 'list';
-      sections.push({ id: `${area.id}.${sections.length}`, type, title: slice ? area.name : ent.plural, values: slice?.values, entity: ent.id, action: op.action, dataPath: op.dataPath, roles: op.roles, card: ent.card, limit: type === 'list' ? 6 : 8, columns: type === 'grid' ? 2 : undefined });
+      const type = ent.roles.price || ent.card === 'product' ? 'grid' : ent.roles.image && ['venue', 'course', 'event', 'person'].includes(ent.card) ? 'rail' : ent.roles.image ? 'grid' : 'auto';
+      sections.push({ id: `${area.id}.${sections.length}`, type, title: slice ? area.name : ent.plural, values: slice?.values, entity: ent.id, action: op.action, dataPath: op.dataPath, roles: op.roles, card: ent.card, limit: type === 'auto' ? 12 : 8, columns: type === 'grid' ? 2 : undefined });
     }
     // everything else in the folder stays one tap away: create forms, actions, single records
     const items = [...new Set(area.actions)]

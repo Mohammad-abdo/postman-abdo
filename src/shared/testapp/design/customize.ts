@@ -25,7 +25,7 @@ const id = z.string().regex(/^[\w.:#\- ]{1,160}$/);
 const roles = z.record(text(30), text(120));
 const values = z.record(text(60), text(200));
 
-export const SECTION_TYPES = ['greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video', 'insights', 'faq', 'gallery', 'countdown', 'metrics'] as const;
+export const SECTION_TYPES = ['auto', 'greeting', 'search', 'hero', 'chips', 'grid', 'rail', 'list', 'stats', 'map', 'status', 'balance', 'shortcuts', 'feed', 'text', 'image', 'button', 'banner', 'spacer', 'code', 'form', 'divider', 'video', 'insights', 'faq', 'gallery', 'countdown', 'metrics'] as const;
 export const CARDS = ['product', 'venue', 'course', 'order', 'person', 'post', 'trip', 'transaction', 'article', 'event', 'banner', 'chip', 'tile'] as const;
 export const STYLES = ['soft', 'bold', 'minimal', 'playful', 'glass', 'elegant', 'brutal', 'neon', 'classic'] as const;
 
@@ -45,6 +45,8 @@ const section = z
     visibility: z.enum(['all', 'signedIn', 'guest']).optional(),
     /** Entrance animation of the section. */
     animate: z.enum(['none', 'fade', 'slide', 'pop']).optional(),
+    /** How an `auto` list is drawn; `auto` lets the data decide. */
+    present: z.enum(['auto', 'cards', 'chart', 'board', 'timeline', 'agenda', 'table', 'masonry', 'chat', 'ranking']).optional(),
     /** Shown only when the rule holds: `field` is `count`, `me.<field>` or a field of the section's first row. */
     showIf: z.object({ field: text(80), op: z.enum(['eq', 'neq', 'contains', 'gt', 'lt', 'empty', 'notEmpty']), value: text(100).optional() }).strict().optional(),
     /** A written rule such as `count > 0 && me.role == "vip"` (names: count, me.<field>, fields of the first row). */

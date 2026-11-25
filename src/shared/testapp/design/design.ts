@@ -385,8 +385,9 @@ function composeHome(domain: DomainId, entities: Record<string, DesignEntity>, c
     const op = listOp(entity);
     if (!op || op.pathParams.length || used.has(entity.id) || NOT_ON_HOME.has(entity.kind) || isLookup(entity)) continue;
     used.add(entity.id);
-    const type: SectionType = entity.card === 'product' ? 'grid' : ['venue', 'course', 'event', 'person'].includes(entity.card) ? 'rail' : 'list';
-    add({ type, title: entity.plural, entity: entity.id, action: op.action, dataPath: op.dataPath, roles: op.roles, card: entity.card, limit: type === 'list' ? 4 : 6, seeAll: tabFor(entity.id) });
+    // lists nothing decided yet adapt to what their data looks like (chart, board, timeline, table…) instead of one fixed card
+    const type: SectionType = entity.card === 'product' ? 'grid' : ['venue', 'course', 'event', 'person'].includes(entity.card) ? 'rail' : 'auto';
+    add({ type, title: entity.plural, entity: entity.id, action: op.action, dataPath: op.dataPath, roles: op.roles, card: entity.card, limit: type === 'auto' ? 8 : 6, seeAll: tabFor(entity.id) });
   }
   // Collections whose items have a status or an amount (orders, payments, tasks…) get a live overview of them.
   if (!sections.some((s) => ['stats', 'balance', 'insights'].includes(s.type))) {
