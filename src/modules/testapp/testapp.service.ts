@@ -106,6 +106,15 @@ function requestFromAction(action: ActionDef, values: Record<string, unknown>) {
   return { pathParams, query, queryEntries, body, headers, rawBody };
 }
 
+/** Tokens and passwords in a captured answer never become part of the collection. */
+const SECRET_KEY = /(pass(word)?|secret|token|authorization|api[-_]?key|otp|pin)$/i;
+function redactSecrets(value: unknown, depth = 0): unknown {
+  if (depth > 12) return value;
+  if (Array.isArray(value)) return value.map((x) => redactSecrets(x, depth + 1));
+  if (isObj(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, SECRET_KEY.test(k) && typeof v === 'string' ? '[REDACTED]' : redactSecrets(v, depth + 1)]));
+  return value;
+}
+
 export const testAppService = {
   async analyze(userId: string, collectionId: string) {
     await assertCollectionAccess(userId, collectionId);
@@ -397,6 +406,58 @@ export const testAppService = {
     const old = await prisma.testRun.findMany({ where: { testAppId: id }, orderBy: { createdAt: 'desc' }, skip: TESTAPP_LIMITS.runsPerApp, select: { id: true } });
     if (old.length) await prisma.testRun.deleteMany({ where: { id: { in: old.map((o) => o.id) } } });
     return { id: row.id, createdAt: row.createdAt, version: v.version, mode, results, stats, coverage: { ...coverage, regression }, regression, ...extra };
+  },
+
+  /**
+   * Calls the real backend with the collection's safe (GET/HEAD) requests that have no saved response yet and stores each good
+   * JSON answer as an example on that request. The app is then regenerated, so it is built from real data instead of invented rows.
+   */
+  async captureExamples(userId: string, id: string) {
+    const app = await access(userId, id, true);
+    assertRealEnabled(app);
+    const v = await version(id, app.currentVersionId);
+    const bundle = bundleOf(v);
+    const context = await loadRealContext(userId, app);
+    const skipRole = ['auth.login', 'auth.logout', 'auth.refresh', 'auth.register', 'auth.otp'];
+    const candidates = bundle.model.endpoints.filter((e) => isSafeMethod(e.method) && !e.examples.some((x) => x.code >= 200 && x.code < 300) && !['excluded', 'background'].includes(bundle.schema.dispositions[e.key]?.state) && !skipRole.includes(bundle.graph.roles[e.key]?.role));
+    const started = Date.now();
+    const saved: { endpoint: string; status: number }[] = [];
+    const notSaved: { endpoint: string; reason: string }[] = [];
+    let calls = 0;
+    for (const e of candidates) {
+      if (calls >= REAL_LIMITS.maxEndpointsPerRun || Date.now() - started > REAL_LIMITS.runBudgetMs) {
+        notSaved.push({ endpoint: e.key, reason: 'Limit reached (40 requests or 2 minutes). Run it again for the rest.' });
+        continue;
+      }
+      calls++;
+      const out = await executeReal({ userId, app, endpoint: e, context });
+      if (out.kind !== 'ok') {
+        notSaved.push({ endpoint: e.key, reason: out.reason });
+        continue;
+      }
+      if (out.status < 200 || out.status >= 300) {
+        notSaved.push({ endpoint: e.key, reason: `The backend answered ${out.status}, so nothing was saved.` });
+        continue;
+      }
+      if (!isObj(out.body) && !Array.isArray(out.body)) {
+        notSaved.push({ endpoint: e.key, reason: 'The answer was not JSON.' });
+        continue;
+      }
+      const text = JSON.stringify(redactSecrets(out.body));
+      if (text.length > 200_000) {
+        notSaved.push({ endpoint: e.key, reason: 'The answer is larger than 200 KB.' });
+        continue;
+      }
+      const sortOrder = await prisma.example.count({ where: { requestId: e.id } });
+      await prisma.example.create({ data: { requestId: e.id, name: 'Real response (captured)', code: out.status, status: 'OK', headers: json(Object.entries(out.headers).map(([key, value]) => ({ key, value }))), body: text, language: 'json', sortOrder } });
+      saved.push({ endpoint: e.key, status: out.status });
+    }
+    let regenerated = false;
+    if (saved.length) {
+      await testAppService.regenerate(userId, id, { preview: false });
+      regenerated = true;
+    }
+    return { saved, notSaved, regenerated, tried: calls, candidates: candidates.length };
   },
 
   /** Real / comparison runs: only documented-safe calls by default, bounded in count and time. */

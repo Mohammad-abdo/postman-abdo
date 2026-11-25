@@ -499,6 +499,7 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   if (blueprint) {
     for (const area of areas.slice(0, 3)) tabs.push({ id: `page.${area.id}`, label: area.name.length > 11 ? area.name.split(/\s+/)[0].slice(0, 11) : area.name, icon: area.icon, screen: `page.${area.id}` });
   }
+  for (const p of pages || []) screens[`page.${p.id}`] = { id: `page.${p.id}`, kind: 'page', title: p.title, sections: p.sections };
   const areaItems = areas.map((a) => ({ label: a.name, icon: a.icon, page: a.id }));
   const homeSections = composeHome(domain.id, entities, classified.filter((c) => c.intent === 'composite'), actionOf, tabFor, blueprint ? areaItems : folderServices(classified, entities));
   screens.home = {

@@ -35,6 +35,7 @@ testAppRoutes.get('/:id/sessions/:sid/logs', c.logs);
 testAppRoutes.get('/:id/sessions/:sid/state', c.state);
 
 testAppRoutes.post('/:id/runs', validateBody(runSchema), c.run);
+testAppRoutes.post('/:id/real/capture', async (req, res) => res.json(await testAppService.captureExamples(currentUserId(req), String(req.params.id))));
 testAppRoutes.post('/:id/real/invoke', validateBody(realInvokeSchema), c.realInvoke);
 testAppRoutes.get('/:id/rules', c.rules);
 testAppRoutes.put('/:id/rules', validateBody(rulesSchema), c.saveRules);

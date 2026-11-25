@@ -279,7 +279,7 @@ export interface DesignSection {
 
 export interface DesignScreen {
   id: string;
-  kind: 'home' | 'browse' | 'profile' | 'more';
+  kind: 'home' | 'browse' | 'profile' | 'more' | 'page';
   title: string;
   entity?: string;
   sections?: DesignSection[];
