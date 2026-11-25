@@ -43,6 +43,8 @@ testAppRoutes.get('/:id/runs', c.runs);
 testAppRoutes.get('/:id/runs/:rid', c.getRun);
 testAppRoutes.get('/:id/runs/:rid/export', c.exportRun);
 testAppRoutes.get('/:id/coverage', c.coverage);
+testAppRoutes.get('/:id/report', async (req, res) => res.json(await testAppService.report(currentUserId(req), String(req.params.id))));
+testAppRoutes.post('/:id/report', validateBody(saveDesignSchema), async (req, res) => res.json(await testAppService.report(currentUserId(req), String(req.params.id), req.body.customization)));
 
 testAppRoutes.put('/:id/design', validateBody(saveDesignSchema), async (req, res) => res.json(await testAppService.saveDesign(currentUserId(req), String(req.params.id), req.body.customization)));
 testAppRoutes.get('/:id/remixes', async (req, res) => res.json(await testAppService.remixes(currentUserId(req), String(req.params.id))));

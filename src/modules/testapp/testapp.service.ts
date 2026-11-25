@@ -5,6 +5,7 @@ import { diffContracts } from '../../shared/testapp/contract';
 import { redact } from '../../shared/testapp/ai';
 import { generateApp, savedResponse } from '../../shared/testapp/generate';
 import { withDesign } from '../../shared/testapp/design/design';
+import { buildReport } from '../../shared/testapp/report';
 import type { Customization } from '../../shared/testapp/design/customize';
 import { MockCtx, MockState, createInitialState, invoke } from '../../shared/testapp/mock';
 import { CustomTest, TestResult, compareRuns, coverageOf, createMockProbe, runMockTests } from '../../shared/testapp/testing';
@@ -512,6 +513,19 @@ export const testAppService = {
       '|---|---|---|---|---|---|---|---|---|',
       ...results.map((t) => `| ${t.id} | ${t.status} | ${t.type} | ${esc(t.name)} | ${esc(t.endpoint || t.screen || '')} | ${esc(t.expected)} | ${esc(t.actual)} | ${t.certainty} | ${esc(t.error)} |`),
     ].join('\n');
+  },
+
+  /** Collection ↔ design report: every endpoint, where the app uses it, and what the latest tests found. Pass a draft design to check it before saving. */
+  async report(userId: string, id: string, draft?: Customization | null) {
+    const app = await access(userId, id);
+    const v = await version(id, app.currentVersionId);
+    const schema = withDesign(v.schema as any, v.model);
+    const saved = (settingsOf(app) as { design?: Customization }).design ?? null;
+    const latest = await prisma.testRun.findFirst({ where: { testAppId: id }, orderBy: { createdAt: 'desc' }, select: { results: true, createdAt: true, mode: true } });
+    // no saved run yet: run the (fast, deterministic) mock tests now so every endpoint still shows what the tests say
+    const fresh = latest?.results ? null : runMockTests(bundleOf(v), { seed: v.seed }).results;
+    const out = buildReport({ model: v.model as any, schema, customization: (draft === undefined ? saved : draft) as any, results: (latest?.results || fresh || null) as any });
+    return { ...out, basedOn: draft === undefined ? 'saved design' : 'unsaved draft', lastRun: latest ? { at: latest.createdAt, mode: latest.mode } : fresh ? { at: new Date(), mode: 'mock (run just now)' } : null };
   },
 
   async coverage(userId: string, id: string) {
