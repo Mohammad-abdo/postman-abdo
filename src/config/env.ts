@@ -36,6 +36,8 @@ export const env = {
     model: process.env.TESTAPP_AI_MODEL || 'claude-sonnet-5-5',
     /** Cheaper model for short text jobs. */
     fastModel: process.env.TESTAPP_AI_FAST_MODEL || 'claude-haiku-5-5',
+    /** Per person, inside the workspace budget. */
+    userDailyTokens: Number(process.env.TESTAPP_AI_USER_DAILY_TOKENS) || 30000,
     dailyTokenBudget: Number(process.env.TESTAPP_AI_DAILY_TOKENS) || 50000,
   },
   /** Super admin created/promoted at startup. */

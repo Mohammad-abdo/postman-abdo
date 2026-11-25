@@ -39,6 +39,7 @@ model User {
   cookieJar      CookieJar?
   files          UploadedFile[]
   usage          UsageDaily[]
+  apiKeys        UserApiKey[]
   devices        SyncDevice[]
   notifications  Notification[]           @relation("NotificationRecipient")
   conversations  ConversationMember[]
@@ -605,4 +606,38 @@ model TestAppAbEvent {
 
   @@unique([testAppId, experiment, bucket, day])
   @@index([testAppId])
+}
+
+/// Daily AI token usage per person, so one member cannot use up a whole workspace's budget.
+model TestAppAiUserUsage {
+  id     String   @id @default(uuid())
+  userId String
+  day    DateTime @db.Date
+  tokens Int      @default(0)
+
+  @@unique([userId, day])
+}
+
+/// A person's own AI provider key (bring your own key). The secret is encrypted; usage is counted per key.
+model UserApiKey {
+  id         String    @id @default(uuid())
+  userId     String
+  provider   String    @default("anthropic") @db.VarChar(20)
+  label      String    @db.VarChar(60)
+  secret     String    @db.Text
+  last4      String    @db.VarChar(4)
+  active     Boolean   @default(true)
+  /// Tokens per day / in total after which the key is skipped (null = unlimited)
+  dailyLimit Int?
+  totalLimit Int?
+  usedToday  Int       @default(0)
+  usedDay    DateTime? @db.Date
+  totalUsed  Int       @default(0)
+  calls      Int       @default(0)
+  lastUsedAt DateTime?
+  lastError  String?   @db.VarChar(200)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
