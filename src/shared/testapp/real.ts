@@ -92,7 +92,8 @@ export function buildRealRequest(e: Endpoint, values: { pathParams?: Record<stri
   if (!origin) {
     const host = e.host || '';
     origin = host.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (_x, name) => resolve(name) ?? `{{${name}}}`);
-    if (origin && !/^https?:\/\//i.test(origin)) origin = `https://${origin}`;
+    // the model keeps only the host; the scheme the author wrote (http://localhost:3000) must survive
+    if (origin && !/^https?:\/\//i.test(origin)) origin = `${/^\s*http:\/\//i.test(e.urlTemplate || '') ? 'http' : 'https'}://${origin}`;
   }
   const query: Record<string, string> = {};
   e.query.forEach((q) => q.example !== undefined && q.example !== '' && (query[q.name] = q.example));

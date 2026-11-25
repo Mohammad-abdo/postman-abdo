@@ -1,3 +1,4 @@
+import { env } from '../../config/env';
 import { TestApp } from '@prisma/client';
 import { prisma } from '../../core/database/prisma';
 import { BadRequest, Forbidden } from '../../core/errors/http-error';
@@ -15,6 +16,27 @@ import { isFreeRepeat, limitsService } from '../platform/limits.service';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
 
 export const REAL_LIMITS = { timeoutMs: 15_000, maxResponseMb: 2, maxEndpointsPerRun: 40, runBudgetMs: 120_000, maxBodyChars: 256 * 1024 };
+
+/** Never reachable, even on a developer machine: cloud metadata and link-local ranges. */
+const ALWAYS_BLOCKED: Record<string, boolean> = { '0.0.0.0/8': true, '169.254.0.0/16': true, 'fe80::/10': true };
+
+/** Turns a low-level network failure into something a person can act on. */
+export function explainNetworkError(raw: string, url: string) {
+  let host = url;
+  try {
+    const u = new URL(url);
+    host = u.host;
+  } catch {
+    /* keep the raw url */
+  }
+  const local = /^(localhost|127\.|0\.0\.0\.0|\[::1\])/i.test(host);
+  if (/ECONNREFUSED/i.test(raw)) return `Nothing is listening at ${host}. Start your backend (or fix the baseUrl variable) and try again.${local ? ' Real API requests are sent from the Fack Postman server, so "localhost" means the machine the server runs on.' : ''}`;
+  if (/ENOTFOUND|EAI_AGAIN/i.test(raw)) return local && env.blockPrivateNetworks ? `${host} is a private address. This server blocks private networks (BLOCK_PRIVATE_NETWORKS), so it cannot call it. Use a public URL, or run the server on your own machine with BLOCK_PRIVATE_NETWORKS=false.` : `The server could not find the host ${host}. Check the baseUrl variable for a typo.`;
+  if (/ETIMEDOUT|ESOCKETTIMEDOUT|timeout/i.test(raw)) return `${host} did not answer within ${REAL_LIMITS.timeoutMs / 1000} seconds.`;
+  if (/restricted|not allowed|blocked/i.test(raw)) return `The address ${host} is blocked from this server. Private networks are only reachable when BLOCK_PRIVATE_NETWORKS=false.`;
+  if (/CERT|SSL|TLS/i.test(raw)) return `The secure connection to ${host} failed (${raw.replace(/^NETERR:\s*/, '').slice(0, 120)}).`;
+  return raw.replace(/^NETERR:\s*/, '');
+}
 
 export const realSettingsOf = (app: TestApp): RealSettings => {
   const s = (isObj(app.settings) ? app.settings : {}) as { real?: RealSettings };
@@ -130,7 +152,8 @@ export async function executeReal(args: {
     entrypoint: item.id,
     ...runtimeValues(ctx.scopes),
     settings: {
-      restrictedAddresses: PRIVATE_NETWORKS, // always on for this feature, regardless of BLOCK_PRIVATE_NETWORKS
+      // hosted servers (BLOCK_PRIVATE_NETWORKS on) never reach private networks; on your own machine localhost and your LAN work, but cloud-metadata ranges stay blocked
+      restrictedAddresses: env.blockPrivateNetworks ? PRIVATE_NETWORKS : ALWAYS_BLOCKED,
       timeout: REAL_LIMITS.timeoutMs,
       maxResponseSize: REAL_LIMITS.maxResponseMb,
       strictSSL: true,
@@ -139,7 +162,7 @@ export async function executeReal(args: {
     },
   });
   const execution = result.executions[0];
-  if (!execution?.response) return { kind: 'error', reason: execution?.error || result.error || 'No response received' };
+  if (!execution?.response) return { kind: 'error', reason: explainNetworkError(execution?.error || result.error || 'No response received', built.url) };
   const text = String(execution.response.body || '').slice(0, REAL_LIMITS.maxBodyChars);
   return {
     kind: 'ok',
