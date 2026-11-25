@@ -332,4 +332,6 @@ export interface AppDesign {
   entities: Record<string, DesignEntity>;
   /** Endpoints that fit no entity; still reachable from the developer menu. */
   looseActions: string[];
+  /** The collection's own folders, each with the actions inside it: the "Services" screen lists every request here, so none is unreachable. */
+  directory?: { folder: string; actions: string[] }[];
 }

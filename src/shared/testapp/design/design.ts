@@ -13,7 +13,7 @@ import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './
  */
 
 /** Bump when the design engine changes so saved apps are re-designed when opened. */
-export const DESIGN_VERSION = 4;
+export const DESIGN_VERSION = 5;
 const MAX_HOME_SECTIONS = 8;
 const MIN_DOMAIN_SCORE = 2.5;
 
@@ -515,11 +515,24 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
     screens,
     entities,
     looseActions: Object.keys(schema.actions).filter((id) => !covered.has(id)),
+    directory: directoryOf(model, actionOf),
   };
 }
 
 
 /** Versions saved before app designs existed get one computed on read; a failure never breaks loading. */
+/** The collection's folders in their original order, each with its requests' action ids. Requests outside any folder go under "Requests". */
+function directoryOf(model: ApiModel, actionOf: (key: string) => ActionDef | undefined) {
+  const groups = new Map<string, string[]>();
+  for (const e of [...model.endpoints].sort((a, b) => a.order - b.order)) {
+    const id = actionOf(e.key)?.id;
+    if (!id) continue;
+    const folder = e.folderPath.join(' / ') || 'Requests';
+    groups.set(folder, [...(groups.get(folder) || []), id]);
+  }
+  return [...groups].map(([folder, actions]) => ({ folder, actions }));
+}
+
 export function withDesign<T extends Pick<AppSchema, 'actions' | 'app'> & { design?: AppDesign }>(schema: T, model: unknown): T {
   if (!schema || !model || schema.design?.version === DESIGN_VERSION) return schema;
   try {

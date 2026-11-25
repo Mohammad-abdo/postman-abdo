@@ -10,6 +10,8 @@ type Place = { kind: 'screen' | 'tab' | 'section' | 'button' | 'auth' | 'develop
 
 export type EndpointStatus = 'in-app' | 'developer-menu' | 'background' | 'excluded' | 'unused';
 
+/** What "in the app" means here: a user can get to it through a tab, a Home section, a shortcut, a button or the More menu. */
+
 export interface EndpointReport {
   key: string;
   name: string;
@@ -107,6 +109,21 @@ export function buildReport(input: {
   for (const [k, label] of [['login', 'Sign in'], ['register', 'Create account'], ['otp', 'Verify code'], ['logout', 'Sign out'], ['me', 'Profile'], ['updateProfile', 'Edit profile']] as const) viaAction((design.auth as Record<string, any>)[k], { kind: 'auth', label }, `The ${label.toLowerCase()} screen`);
   if (design.auth.required && !design.auth.login) issues.push({ severity: 'warn', title: 'The app asks users to sign in, but no login endpoint was found', detail: 'Mark one request as the login (Mapping tab) so the app can sign in.' });
 
+  // which entities can a person actually open? a tab, a Home/page section, a shortcut, or the More menu (every list entity is there)
+  const homeScreens: DesignSection[][] = [custom?.home ?? design.screens.home?.sections ?? [], ...((custom?.pages ?? design.pages ?? []).map((p) => p.sections))];
+  const reachable = new Set<string>();
+  design.tabs.forEach((t) => t.screen.startsWith('browse.') && reachable.add(t.screen.slice(7)));
+  for (const sections of homeScreens) for (const s of sections) {
+    if (s.hidden) continue;
+    if (s.entity) reachable.add(s.entity);
+    if (s.target?.entity) reachable.add(s.target.entity);
+    for (const i of s.items || []) if (i.entity) reachable.add(i.entity);
+  }
+  for (const ent of Object.values(design.entities)) if (ent.ops.some((o) => o.intent === 'list') && ent.kind !== 'user') reachable.add(ent.id);
+  // folders of the collection (the Services screen): last resort for anything without its own screen
+  const folderOf = new Map<string, string>();
+  for (const d of design.directory || []) for (const a of d.actions) folderOf.set(a, d.folder);
+
   // entities: lists, details, buttons, tabs
   const tabOf = new Map(design.tabs.map((t) => [t.screen, t.label]));
   for (const ent of Object.values(design.entities)) {
@@ -114,7 +131,9 @@ export function buildReport(input: {
     if (!ent.roles?.title) issues.push({ severity: 'info', title: `“${ent.label}” has no field to use as a title`, detail: 'Cards show a generic title. Check the example response has a name or title field.' });
     for (const op of ent.ops) {
       const where = op.intent === 'list' ? (tab ? `${tab} tab (list)` : `${ent.plural} list`) : op.intent === 'detail' ? `${ent.label} detail screen` : `${ent.label}: ${op.label}`;
-      add(op.endpoint, { kind: op.intent === 'list' || op.intent === 'detail' ? 'screen' : 'button', label: where });
+      // an entity nobody can open has no screen: its endpoints are only in the Services list
+      if (reachable.has(ent.id)) add(op.endpoint, { kind: op.intent === 'list' || op.intent === 'detail' ? 'screen' : 'button', label: where });
+      else add(op.endpoint, { kind: 'developer', label: `Services → ${folderOf.get(op.action) || ent.plural}` });
     }
     for (const cta of ent.ctas) viaAction(cta.action, { kind: 'button', label: `${ent.label} detail → “${cta.label}”` }, `“${cta.label}” on ${ent.label}`);
     for (const rel of ent.relations || []) viaAction((rel as { action?: string }).action, { kind: 'button', label: `${ent.label} detail → ${(rel as { label?: string }).label || 'related action'}` }, `A related button on ${ent.label}`);
@@ -132,6 +151,7 @@ export function buildReport(input: {
       const label = `${name} → ${s.title || s.type}`;
       viaAction(s.action, { kind: 'section', label }, `“${s.title || s.type}” on ${name}`);
       viaAction(s.target?.action, { kind: 'button', label: `${name} → button “${s.title || s.type}”` }, `The button on ${name}`);
+      for (const i of s.items || []) viaAction(i.action, { kind: 'button', label: `${name} → shortcut “${i.label}”` }, `The shortcut “${i.label}” on ${name}`);
       if (s.entity) {
         const ent = design.entities[s.entity];
         if (!ent) issues.push({ severity: 'error', title: `“${s.title || s.type}” on ${name} points at “${s.entity}”, which is not in this collection` });
@@ -140,7 +160,7 @@ export function buildReport(input: {
     }
     if (!sections.length) issues.push({ severity: 'warn', title: `“${name}” has no sections`, detail: 'The screen will be empty.' });
   }
-  for (const action of design.looseActions || []) add(actionToEndpoint.get(action), { kind: 'developer', label: 'Developer menu (no screen fits it)' });
+  for (const action of design.looseActions || []) add(actionToEndpoint.get(action), { kind: 'developer', label: `Services → ${folderOf.get(action) || 'Other requests'}` });
 
   // test results per endpoint
   const byEndpoint = new Map<string, TestResult[]>();

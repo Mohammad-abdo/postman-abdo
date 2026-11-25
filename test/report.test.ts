@@ -61,4 +61,19 @@ describe('collection ↔ design report', () => {
     const sev = r.issues.map((i) => i.severity);
     assert.deepEqual(sev, [...sev].sort((a, c) => ({ error: 0, warn: 1, info: 2 })[a] - ({ error: 0, warn: 1, info: 2 })[c]));
   });
+  it('lists every request under its collection folder so none is out of reach', () => {
+    const b = gen();
+    const dir = b.schema.design!.directory!;
+    const all = dir.flatMap((d) => d.actions);
+    assert.equal(new Set(all).size, Object.keys(b.schema.actions).length, 'every action is in exactly one folder');
+  });
+  it('does not call an endpoint in-app when its entity cannot be opened', () => {
+    const b = gen();
+    const d = structuredClone(b.schema.design!) as any;
+    d.tabs = d.tabs.filter((t: any) => !t.screen.startsWith('browse.'));
+    d.screens.home.sections = [];
+    for (const e of Object.values<any>(d.entities)) e.ops = e.ops.map((o: any) => ({ ...o, intent: o.intent === 'list' ? 'search' : o.intent }));
+    const r = buildReport({ model: b.model, schema: { ...(b.schema as any), design: d } });
+    assert.ok(r.summary.inApp < r.summary.endpoints, 'unreachable entities no longer count as used');
+  });
 });
