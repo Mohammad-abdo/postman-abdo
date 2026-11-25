@@ -66,7 +66,7 @@ testAppRoutes.post('/:id/ai/suggest', async (req, res) => {
 });
 testAppRoutes.get('/:id/ab', async (req, res) => res.json(await abService.results(currentUserId(req), String(req.params.id), typeof req.query.experiment === 'string' ? req.query.experiment.slice(0, 60) : undefined)));
 testAppRoutes.delete('/:id/ab', async (req, res) => res.json(await abService.reset(currentUserId(req), String(req.params.id), typeof req.query.experiment === 'string' ? req.query.experiment.slice(0, 60) : undefined)));
-const aiDesignSchema = z.object({ mode: z.enum(['design', 'edit', 'redesign']), prompt: z.string().trim().max(1000).default(''), current: z.any().optional(), focus: z.string().max(200).optional() });
+const aiDesignSchema = z.object({ mode: z.enum(['design', 'edit', 'redesign', 'text']), prompt: z.string().trim().max(1000).default(''), current: z.any().optional(), focus: z.string().max(200).optional(), image: z.string().max(1_400_000).optional() });
 testAppRoutes.post('/:id/ai/design', validateBody(aiDesignSchema), async (req, res) => {
   const out = await aiService.design(currentUserId(req), String(req.params.id), req.body);
   audit(req, { action: 'testapp.ai.design', targetType: 'testapp', targetId: String(req.params.id), details: { mode: req.body.mode, tokens: out.tokens, options: out.proposals.length } });

@@ -127,12 +127,18 @@ export interface AiCompletion {
   outputTokens: number;
 }
 
-export type AiArgs = { system: string; user: string; maxTokens: number; model?: string; tool?: AiTool };
+export interface AiImage {
+  mediaType: 'image/png' | 'image/jpeg' | 'image/webp';
+  /** base64, no data: prefix */
+  data: string;
+}
+
+export type AiArgs = { system: string; user: string; maxTokens: number; model?: string; tool?: AiTool; images?: AiImage[] };
 export type AiProvider = (args: AiArgs) => Promise<AiCompletion>;
 
 /** Anthropic Messages API. `fetchImpl` is injectable for tests. The system prompt is cached; a tool forces structured output. */
 export function anthropicProvider(cfg: { apiKey: string; model: string; baseUrl?: string }, fetchImpl: typeof fetch = fetch): AiProvider {
-  return async ({ system, user, maxTokens, model, tool }) => {
+  return async ({ system, user, maxTokens, model, tool, images }) => {
     const res = await fetchImpl(`${cfg.baseUrl || 'https://api.anthropic.com'}/v1/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
@@ -140,7 +146,7 @@ export function anthropicProvider(cfg: { apiKey: string; model: string; baseUrl?
         model: model || cfg.model,
         max_tokens: maxTokens,
         system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-        messages: [{ role: 'user', content: user }],
+        messages: [{ role: 'user', content: images?.length ? [...images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.data } })), { type: 'text', text: user }] : user }],
         ...(tool ? { tools: [{ name: tool.name, description: tool.description, input_schema: tool.schema }], tool_choice: { type: 'tool', name: tool.name } } : {}),
       }),
       signal: AbortSignal.timeout(90_000),

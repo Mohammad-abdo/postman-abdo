@@ -8,7 +8,7 @@ import { isObj } from './util';
 /* AI design helpers. Pure: prompt building, patch merging and strict validation.
    The model only PROPOSES a patch; it is merged onto the current design, validated by customizationSchema and shown as a diff. */
 
-export const MODES = ['design', 'edit', 'redesign'] as const;
+export const MODES = ['design', 'edit', 'redesign', 'text'] as const;
 export type DesignMode = (typeof MODES)[number];
 
 /** Objects merge, arrays and scalars replace, null removes a key. */
@@ -106,13 +106,22 @@ export function designContext(bundle: Bundle, current: Customization | null) {
 const MODE_HINT: Record<DesignMode, string> = {
   design: 'Build or modify the design to satisfy the request. Return exactly 1 option.',
   edit: 'Make only the targeted change that was asked; leave everything else as it is. Return exactly 1 option.',
+  text: 'Rewrite or translate ONLY visible text: brand name/tagline, tab labels, section titles, entity label/plural, fieldLabels, login texts and faq questions/answers. Do not touch colours, layout, ids, icons, entity/action references or structure. Keep the tone natural for the business. Return exactly 1 option.',
   redesign: 'Return 3 clearly different design directions (different palette, style, layout and fonts), each a complete coherent patch.',
 };
 
-export function designPrompt(bundle: Bundle, current: Customization | null, mode: DesignMode, request: string, focus?: string) {
+export const REFERENCE_HINT = 'A reference image is attached. Take its colour palette, typography feel, corner radius, density and overall mood as inspiration for the theme and layout choices, but do not copy text or logos from it.';
+
+/** Splits a data: URL into media type and base64, or null when it is not a png/jpeg/webp. */
+export function parseImage(dataUrl?: string) {
+  const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
+  return m ? { mediaType: m[1] as 'image/png' | 'image/jpeg' | 'image/webp', data: m[2] } : null;
+}
+
+export function designPrompt(bundle: Bundle, current: Customization | null, mode: DesignMode, request: string, focus?: string, hasImage = false) {
   return {
     system: DESIGN_SYSTEM,
-    user: `${MODE_HINT[mode]}\n${focus ? `Focus on: ${focus}\n` : ''}Request: ${request || 'Make it more distinctive and polished.'}\n\nContext (JSON):\n${designContext(bundle, current)}`,
+    user: `${MODE_HINT[mode]}\n${hasImage ? `${REFERENCE_HINT}\n` : ''}${focus ? `Focus on: ${focus}\n` : ''}Request: ${request || 'Make it more distinctive and polished.'}\n\nContext (JSON):\n${designContext(bundle, current)}`,
   };
 }
 

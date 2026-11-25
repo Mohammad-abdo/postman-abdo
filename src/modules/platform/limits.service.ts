@@ -9,6 +9,27 @@ const today = () => {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 };
 
+const recent = new Map<string, { start: number; n: number }>();
+const WINDOW_MS = 10_000;
+const FREE_REPEATS = 5;
+
+/**
+ * A screen can ask for the same endpoint several times at once (badges, sections, preview reloads). Repeats of the
+ * same read inside a short window are free, up to a few, so previews do not burn the daily quota. Writes always count.
+ */
+export function isFreeRepeat(userId: string, method: string, url: string, now = Date.now()) {
+  if (!/^(GET|HEAD)$/i.test(method)) return false;
+  if (recent.size > 2000) for (const [k, v] of recent) if (now - v.start > WINDOW_MS) recent.delete(k);
+  const key = `${userId}|${method.toUpperCase()} ${url}`;
+  const hit = recent.get(key);
+  if (!hit || now - hit.start > WINDOW_MS) {
+    recent.set(key, { start: now, n: 0 });
+    return false;
+  }
+  hit.n += 1;
+  return hit.n <= FREE_REPEATS;
+}
+
 /** Enforces the free-plan limits configured in the admin dashboard. */
 export const limitsService = {
   /** Platform defaults merged with the user's personal overrides. */

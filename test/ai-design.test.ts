@@ -59,3 +59,24 @@ describe('AI design patches', () => {
     assert.equal(out.inputTokens + out.outputTokens, 7);
   });
 });
+
+describe('reference image and text mode', () => {
+  it('accepts only small png/jpeg/webp data URLs', async () => {
+    const { parseImage } = await import('../src/shared/testapp/ai-design');
+    assert.deepEqual(parseImage('data:image/png;base64,AAAA'), { mediaType: 'image/png', data: 'AAAA' });
+    assert.equal(parseImage('data:image/svg+xml;base64,AAAA'), null);
+    assert.equal(parseImage('data:text/html;base64,AAAA'), null);
+    assert.equal(parseImage('https://x/y.png'), null);
+  });
+  it('prompt mentions the image and text mode limits what may change', () => {
+    assert.match(designPrompt(b, null, 'design', 'like this', undefined, true).user, /reference image is attached/);
+    assert.match(designPrompt(b, null, 'text', 'translate to Arabic').user, /ONLY visible text/);
+  });
+  it('provider sends the image before the text', async () => {
+    let body: any;
+    const f = (async (_u: string, init: any) => ((body = JSON.parse(init.body)), { ok: true, json: async () => ({ content: [], usage: {} }) })) as unknown as typeof fetch;
+    await anthropicProvider({ apiKey: 'k', model: 'm' }, f)({ system: 's', user: 'u', maxTokens: 5, images: [{ mediaType: 'image/png', data: 'AAAA' }] });
+    assert.equal(body.messages[0].content[0].type, 'image');
+    assert.equal(body.messages[0].content[1].text, 'u');
+  });
+});

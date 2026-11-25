@@ -11,7 +11,7 @@ import { isObj } from '../../shared/testapp/util';
 import { collectionService } from '../collections/collection.service';
 import { runCollection } from '../execution/runtime/runtime.adapter';
 import { loadScopes, runtimeValues } from '../execution/variable-scopes';
-import { limitsService } from '../platform/limits.service';
+import { isFreeRepeat, limitsService } from '../platform/limits.service';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
 
 export const REAL_LIMITS = { timeoutMs: 15_000, maxResponseMb: 2, maxEndpointsPerRun: 40, runBudgetMs: 120_000, maxBodyChars: 256 * 1024 };
@@ -87,7 +87,7 @@ export async function executeReal(args: {
   const row = await prisma.request.findUnique({ where: { id: endpoint.id } });
   if (!row || row.collectionId !== app.collectionId) return { kind: 'skipped', reason: 'The request no longer exists in the collection' };
 
-  await limitsService.consumeRequests(args.userId, 1);
+  if (!isFreeRepeat(args.userId, built.method, built.url)) await limitsService.consumeRequests(args.userId, 1);
   const item = requestToV21Item({ ...(row as unknown as RequestModel), examples: [] }, { forRun: true });
   const inheritedAuth = folderAuth(ctx.collection.item || [], item.id);
   if (!item.request.auth && inheritedAuth !== undefined) item.request.auth = inheritedAuth;

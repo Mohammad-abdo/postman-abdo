@@ -3,7 +3,7 @@ import { prisma } from '../../core/database/prisma';
 import { BadRequest, Forbidden, HttpError, NotFound } from '../../core/errors/http-error';
 import { AiArgs, AiProvider, anthropicProvider, explainPrompt, parseSuggestions, redact, suggestPrompt } from '../../shared/testapp/ai';
 import { Customization, customizationSchema } from '../../shared/testapp/design/customize';
-import { DesignMode, Proposal, designPrompt, designTool, parseProposals, parseReview, reviewPrompt, reviewTool } from '../../shared/testapp/ai-design';
+import { DesignMode, Proposal, designPrompt, parseImage, designTool, parseProposals, parseReview, reviewPrompt, reviewTool } from '../../shared/testapp/ai-design';
 import { TestResult } from '../../shared/testapp/testing';
 import { Bundle } from '../../shared/testapp/types';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
@@ -34,7 +34,7 @@ async function used(workspaceId: string) {
   return (await prisma.testAppAiUsage.findUnique({ where: { workspaceId_day: { workspaceId, day: today() } } }))?.tokens || 0;
 }
 
-async function complete(workspaceId: string, prompt: { system: string; user: string }, maxTokens: number, extra: Pick<AiArgs, 'tool' | 'model'> = {}) {
+async function complete(workspaceId: string, prompt: { system: string; user: string }, maxTokens: number, extra: Pick<AiArgs, 'tool' | 'model' | 'images'> = {}) {
   if ((await used(workspaceId)) >= env.ai.dailyTokenBudget) throw new HttpError(429, 'The daily AI budget of this workspace is used up.');
   const out = await getProvider()({ ...prompt, maxTokens, ...extra }).catch((e: Error) => {
     throw new HttpError(502, `AI provider error: ${e.message}`);
@@ -90,21 +90,25 @@ export const aiService = {
   },
 
   /** Proposes design changes (1 option, or 3 for a redesign). Nothing is saved: the studio previews and the user applies. */
-  async design(userId: string, appId: string, input: { mode: DesignMode; prompt: string; current?: unknown; focus?: string }) {
+  async design(userId: string, appId: string, input: { mode: DesignMode; prompt: string; current?: unknown; focus?: string; image?: string }) {
     assertEnabled();
     const app = await authorize(userId, appId);
     const bundle = await loadBundle(appId);
     const current = currentOf(input.current);
     const count = input.mode === 'redesign' ? 3 : 1;
-    const prompt = designPrompt(bundle, current, input.mode, input.prompt, input.focus);
+    const model = input.mode === 'text' ? env.ai.fastModel : undefined; // short text jobs run on the cheaper model
+    const image = parseImage(input.image);
+    if (input.image && !image) throw BadRequest('The reference image must be a png, jpeg or webp.');
+    const images = image ? [image] : undefined;
+    const prompt = designPrompt(bundle, current, input.mode, input.prompt, input.focus, !!image);
     let tokens = 0;
-    let out = await complete(app.workspaceId, prompt, 6000, { tool: designTool(count) });
+    let out = await complete(app.workspaceId, prompt, 6000, { tool: designTool(count), model, images });
     tokens += out.inputTokens + out.outputTokens;
     let parsed = parseProposals(out.toolInput, current);
     if (!parsed.proposals.length) {
       // One self-repair round: tell the model exactly what was rejected.
       const retry = [prompt.user, '', 'Your previous reply was rejected:', ...parsed.errors, 'Fix these problems and reply again.'].join('\n');
-      out = await complete(app.workspaceId, { system: prompt.system, user: retry }, 6000, { tool: designTool(count) });
+      out = await complete(app.workspaceId, { system: prompt.system, user: retry }, 6000, { tool: designTool(count), model, images });
       tokens += out.inputTokens + out.outputTokens;
       parsed = parseProposals(out.toolInput, current);
     }
