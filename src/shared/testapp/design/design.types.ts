@@ -274,7 +274,7 @@ export interface DesignSection {
   look?: { layout?: 'scroll' | 'stack' | 'grid' | 'wrap'; shape?: 'default' | 'circle' | 'square' | 'pill' | 'card' | 'banner'; size?: 'sm' | 'md' | 'lg'; columns?: number; gap?: number; aspect?: '1:1' | '4:3' | '16:9' | '3:4'; fit?: 'cover' | 'contain'; hide?: string[] };
   animate?: 'none' | 'fade' | 'slide' | 'pop';
   /** Shortcut buttons (type `shortcuts`). */
-  items?: { label: string; icon: string; entity?: string; action?: string; values?: Record<string, string> }[];
+  items?: { label: string; icon: string; entity?: string; action?: string; page?: string; values?: Record<string, string> }[];
 }
 
 export interface DesignScreen {
@@ -334,4 +334,6 @@ export interface AppDesign {
   looseActions: string[];
   /** The collection's own folders, each with the actions inside it: the "Services" screen lists every request here, so none is unreachable. */
   directory?: { folder: string; actions: string[] }[];
+  /** Set when the app's structure was built from the collection's folders: how Home is arranged and what the areas are. */
+  blueprint?: { archetype: 'hub' | 'catalog' | 'dashboard' | 'feed'; areas: { id: string; name: string; entities: string[]; actions: number }[] };
 }

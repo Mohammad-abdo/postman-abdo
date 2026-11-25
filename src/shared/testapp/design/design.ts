@@ -2,6 +2,7 @@ import { ActionDef, ApiModel, AppSchema } from '../types';
 import { AppDesign, CardStyle, DesignEntity, DesignOp, DesignScreen, DesignSection, DomainId, EntityKind, FieldRoles, Intent, SectionType } from './design.types';
 import { Classified, classifyEndpoint, commonPrefix, exampleBody, fieldRoles, findLists, findRecord, isObj, kindOf, singular, tokens } from './entities';
 import { buildAuth } from './auth';
+import { archetypeOf, areaPages, arrangeHome, buildAreas } from './blueprint';
 import { brandColorsOf, isRtl, pickLook } from './look';
 import { buildRelations, enrichLists, folderServices, isLookup } from './lists';
 import { sampleProfile, sampleRows } from './sample';
@@ -13,7 +14,7 @@ import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './
  */
 
 /** Bump when the design engine changes so saved apps are re-designed when opened. */
-export const DESIGN_VERSION = 5;
+export const DESIGN_VERSION = 6;
 const MAX_HOME_SECTIONS = 8;
 const MIN_DOMAIN_SCORE = 2.5;
 
@@ -467,7 +468,12 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
   const screens: Record<string, DesignScreen> = {};
   const tabbed = new Set<string>();
   const listEntities = Object.values(entities).filter((e) => rootListOp(e) && e.kind !== 'user' && !isLookup(e)).sort((a, b) => b.ops.length - a.ops.length);
+  // the collection's own folders become the app's areas (pages), when it has at least two
+  const areas = buildAreas(model, entities, actionOf);
+  const blueprint = areas.length >= 2;
+  const archetype = blueprint ? archetypeOf(areas, entities) : undefined;
   const addBrowseTab = (entity: DesignEntity) => {
+    if (blueprint) return;
     if (tabbed.has(entity.id) || tabs.length >= 4) return;
     tabbed.add(entity.id);
     const screen = `browse.${entity.id}`;
@@ -478,7 +484,7 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
     const entity = group.flatMap((k) => listEntities.filter((e) => e.kind === k))[0];
     if (entity) addBrowseTab(entity);
   }
-  if (domain.id === 'generic' || tabs.length < 3) {
+  if (!blueprint && (domain.id === 'generic' || tabs.length < 3)) {
     [...listEntities].sort((a, b) => b.ops.length - a.ops.length).forEach(addBrowseTab);
   }
   const tabFor = (entity: string) => `browse.${entity}`;
@@ -489,11 +495,17 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
     screens[id] ||= { id, kind: 'browse', title: entity.plural, entity: entity.id };
   }
 
+  const pages = blueprint ? areaPages(areas, entities, schema.actions, new Set(), folderServices(classified, entities)) : undefined;
+  if (blueprint) {
+    for (const area of areas.slice(0, 3)) tabs.push({ id: `page.${area.id}`, label: area.name.length > 11 ? area.name.split(/\s+/)[0].slice(0, 11) : area.name, icon: area.icon, screen: `page.${area.id}` });
+  }
+  const areaItems = areas.map((a) => ({ label: a.name, icon: a.icon, page: a.id }));
+  const homeSections = composeHome(domain.id, entities, classified.filter((c) => c.intent === 'composite'), actionOf, tabFor, blueprint ? areaItems : folderServices(classified, entities));
   screens.home = {
     id: 'home',
     kind: 'home',
     title: def.homeLabel,
-    sections: composeHome(domain.id, entities, classified.filter((c) => c.intent === 'composite'), actionOf, tabFor, folderServices(classified, entities)),
+    sections: blueprint && archetype ? arrangeHome(homeSections, archetype) : homeSections,
   };
   screens.profile = { id: 'profile', kind: 'profile', title: 'Profile' };
   tabs.push({ id: 'profile', label: auth.me || auth.login ? 'Profile' : 'More', icon: auth.me || auth.login ? 'person' : 'menu', screen: 'profile' });
@@ -516,6 +528,8 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
     entities,
     looseActions: Object.keys(schema.actions).filter((id) => !covered.has(id)),
     directory: directoryOf(model, actionOf),
+    ...(pages ? { pages } : {}),
+    ...(blueprint && archetype ? { blueprint: { archetype, areas: areas.map((a) => ({ id: a.id, name: a.name, entities: a.entities, actions: a.actions.length })) } } : {}),
   };
 }
 

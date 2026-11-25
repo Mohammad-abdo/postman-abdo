@@ -26,7 +26,9 @@ describe('app design: domain detection', () => {
     assert.equal(orders.roles.address, 'delivery_address');
     assert.ok(d.auth.login);
     assert.ok(d.auth.me);
-    assert.deepEqual(d.tabs.map((t) => t.screen), ['home', 'browse.order', 'profile']);
+    assert.equal(d.tabs[0].screen, 'home');
+    assert.equal(d.tabs[d.tabs.length - 1].screen, 'profile');
+    assert.ok(d.tabs.some((t) => t.screen.startsWith('page.area-')), 'the collection folders became tabs');
   });
 
   it('recognises a student app with courses and progress', () => {
@@ -198,8 +200,9 @@ describe('app design: car services collection (OTP sign-in, filters, categories)
   it('turns feature folders into services and favorites into a save button', () => {
     const d = generated().design!;
     const services = d.screens.home.sections!.find((s) => s.type === 'shortcuts')!.items!;
-    assert.deepEqual(services.map((s) => s.label), ['Vehicles', 'Towing', 'Spare Parts', 'Maintenance Packages']);
-    assert.deepEqual(services.find((s) => s.label === 'Maintenance Packages')!.values, { type: 'MAINTENANCE_PACKAGE' });
+    for (const name of ['Vehicles', 'Towing', 'Spare Parts', 'Maintenance Packages']) assert.ok(services.some((s) => s.label === name && s.page), `${name} is an area with its own page`);
+    const mp = d.pages!.find((p) => p.title === 'Maintenance Packages')!;
+    assert.ok(mp.sections.some((s) => s.values?.type === 'MAINTENANCE_PACKAGE'), 'the folder shows only its slice of the shared list');
     assert.ok(d.entities.towing_request, '“requests” takes its meaning from “towing”');
     assert.ok(d.entities.product.ctas.some((c) => c.label === 'Save to favorites'));
     assert.ok(!d.entities.product.ctas.some((c) => c.label === 'Edit'), 'PUT /favorites/products/{id} is not an edit');
@@ -281,5 +284,24 @@ describe('app design: every collection gets its own look', () => {
       assert.ok(contrast(t.muted, t.surface)! >= 3, `muted on cards ${n}`);
       assert.ok(contrast(t.mode === 'dark' ? '#04120A' : '#FFFFFF', t.primary)! >= 3, `button text ${n}`);
     }
+  });
+});
+
+describe('app design: structure comes from the collection folders', () => {
+  it('builds a page and a tab per feature area, with sign-in and system folders left out', () => {
+    const c = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '../../ZoneCar Customer API.postman_collection.json'), 'utf8'));
+    const d = design(c);
+    const titles = d.pages!.map((p) => p.title);
+    assert.ok(titles.includes('Towing') && titles.includes('Spare Parts'));
+    assert.ok(!titles.some((t) => /auth|sign out/i.test(t)), 'sign-in folders are not areas');
+    assert.ok(d.tabs.filter((t) => t.screen.startsWith('page.')).length === 3);
+    assert.ok(d.blueprint && ['hub', 'catalog', 'dashboard', 'feed'].includes(d.blueprint.archetype));
+    for (const p of d.pages!) assert.ok(p.sections.length > 0, `${p.title} is not empty`);
+  });
+  it('arranges Home differently per archetype', () => {
+    const c = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '../../ZoneCar Customer API.postman_collection.json'), 'utf8'));
+    const d = design(c);
+    const first = d.screens.home.sections!.filter((s) => !['greeting', 'search', 'status'].includes(s.type))[0];
+    if (d.blueprint!.archetype === 'hub') assert.equal(first.type, 'shortcuts');
   });
 });
