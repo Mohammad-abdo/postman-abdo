@@ -16,6 +16,10 @@ export const env = {
   isProduction: nodeEnv === 'production',
   port: Number(process.env.PORT) || 4000,
   jwtSecret: process.env.JWT_SECRET || 'fack-postman-dev-secret',
+  /** Encrypts stored API keys. Separate from JWT_SECRET so rotating sign-in tokens never locks people out of their keys. Falls back to JWT_SECRET. */
+  secretsKey: process.env.SECRETS_KEY || process.env.JWT_SECRET || 'fack-postman-dev-secret',
+  /** Older keys still accepted for reading (comma separated), used while rotating. */
+  secretsKeyPrevious: (process.env.SECRETS_KEY_PREVIOUS || '').split(',').map((s) => s.trim()).filter(Boolean),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d',
   uploadDir: path.resolve(__dirname, '../../uploads'),
   clientDist: path.resolve(__dirname, '../../../client/dist'),
@@ -47,4 +51,10 @@ export const env = {
 
 if (env.isProduction && env.jwtSecret === 'fack-postman-dev-secret') {
   throw new Error('JWT_SECRET must be set in production');
+}
+if (env.isProduction && !process.env.SECRETS_KEY) {
+  console.warn('[security] SECRETS_KEY is not set: stored API keys are encrypted with JWT_SECRET. Set a separate SECRETS_KEY so you can rotate JWT_SECRET safely.');
+}
+if (!env.isProduction && env.jwtSecret === 'fack-postman-dev-secret') {
+  console.warn('[security] Using the built-in development secret. Fine on your machine; set JWT_SECRET (and SECRETS_KEY) before sharing this server.');
 }

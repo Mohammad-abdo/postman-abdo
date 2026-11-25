@@ -14,7 +14,7 @@ import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './
  */
 
 /** Bump when the design engine changes so saved apps are re-designed when opened. */
-export const DESIGN_VERSION = 6;
+export const DESIGN_VERSION = 7;
 const MAX_HOME_SECTIONS = 8;
 const MIN_DOMAIN_SCORE = 2.5;
 

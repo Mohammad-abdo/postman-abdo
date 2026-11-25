@@ -71,3 +71,18 @@ describe('other providers', () => {
     assert.deepEqual(out.toolInput, { ok: true });
   });
 });
+
+import { unsealWithMeta } from '../src/core/security/secret-box';
+
+describe('key rotation', () => {
+  it('reads secrets sealed with an older key and says the current one was not enough', () => {
+    const old = seal('sk-ant-abcdefghijklmnopqrstuvwxyz', 'old-key');
+    const out = unsealWithMeta(old, ['new-key', 'old-key']);
+    assert.equal(out.plain, 'sk-ant-abcdefghijklmnopqrstuvwxyz');
+    assert.equal(out.current, false);
+    assert.equal(unsealWithMeta(seal('x1234', 'new-key'), ['new-key', 'old-key']).current, true);
+  });
+  it('fails clearly when no known key fits', () => {
+    assert.throws(() => unsealWithMeta(seal('secret-value', 'other'), ['new-key', 'old-key']));
+  });
+});

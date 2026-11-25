@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { env } from '../../config/env';
 import { prisma } from '../../core/database/prisma';
 import { Conflict, HttpError, NotFound } from '../../core/errors/http-error';
-import { seal, unseal } from '../../core/security/secret-box';
+import { seal, unsealWithMeta } from '../../core/security/secret-box';
 import { assertPublicUrl } from '../../core/security/safe-fetch';
 import { AiProvider, anthropicProvider, geminiProvider, openaiProvider } from '../../shared/testapp/ai';
 
@@ -145,7 +145,7 @@ export const apiKeysService = {
     const row = await owned(userId, id);
     if (!PROVIDERS[row.provider as ProviderId]?.ai) throw new HttpError(400, 'This token is only stored. There is nothing to test it against.');
     try {
-      const out = await (await providerFor(row, unseal(row.secret), env.ai.fastModel))({ system: 'Reply with the single word ok.', user: 'ping', maxTokens: 8 });
+      const out = await (await providerFor(row, unsealWithMeta(row.secret).plain, env.ai.fastModel))({ system: 'Reply with the single word ok.', user: 'ping', maxTokens: 8 });
       await apiKeysService.record(id, out.inputTokens + out.outputTokens);
       return { ok: true };
     } catch (e) {
@@ -161,9 +161,12 @@ export const apiKeysService = {
     const row = rows.find((r) => !blockedReason(r));
     if (!row) return null;
     try {
-      return { id: row.id, label: row.label, key: unseal(row.secret), provider: row.provider, baseUrl: row.baseUrl, model: row.model };
+      const { plain, current } = unsealWithMeta(row.secret);
+      // encrypted with an older key (after a rotation): move it to the current one now
+      if (!current) await prisma.userApiKey.update({ where: { id: row.id }, data: { secret: seal(plain) } }).catch(() => undefined);
+      return { id: row.id, label: row.label, key: plain, provider: row.provider, baseUrl: row.baseUrl, model: row.model };
     } catch {
-      await prisma.userApiKey.update({ where: { id: row.id }, data: { active: false, lastError: 'Could not be decrypted (server secret changed). Add the key again.' } });
+      await prisma.userApiKey.update({ where: { id: row.id }, data: { active: false, lastError: 'Could not be decrypted: the server key changed. Put the old key in SECRETS_KEY_PREVIOUS, or add this key again.' } });
       return null;
     }
   },
@@ -172,7 +175,7 @@ export const apiKeysService = {
   async reveal(userId: string, id: string) {
     const row = await owned(userId, id);
     if (row.provider !== 'other') throw new HttpError(400, 'AI keys cannot be shown again. Add a new one if you lost it.');
-    return { key: unseal(row.secret) };
+    return { key: unsealWithMeta(row.secret).plain };
   },
 
   /** Adds usage atomically (a new day starts from zero on its own). */

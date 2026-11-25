@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { rateLimits } from '../../core/security/rate-limit.middleware';
 import { validateBody } from '../../core/middleware/validate.middleware';
 import { accountController } from './account.controller';
 import { audit } from '../../core/audit/audit.service';
@@ -18,6 +19,7 @@ accountRoutes.put('/preferences', validateBody(preferencesSchema), accountContro
 
 /* Bring your own AI key: several keys per person, each can be switched on or off and capped. Secrets never leave the server. */
 accountRoutes.get('/ai-usage', async (req, res) => res.json(await aiUsage(currentUserId(req), Math.min(Math.max(Number(req.query.days) || 30, 1), 90))));
+accountRoutes.use('/api-keys', rateLimits.apiKeys());
 accountRoutes.get('/api-keys', async (req, res) => res.json(await apiKeysService.list(currentUserId(req))));
 accountRoutes.post('/api-keys', validateBody(createKeySchema), async (req, res) => {
   const out = await apiKeysService.create(currentUserId(req), req.body);

@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "secrets:rotate": "tsx scripts/rotate-secrets.ts",
     "test": "tsx --test \"test/**/*.test.ts\""
   },
   "keywords": [],
