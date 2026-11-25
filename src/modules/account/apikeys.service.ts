@@ -50,6 +50,26 @@ const owned = async (userId: string, id: string) => {
   return row;
 };
 
+/** AI usage for the usage page: per feature and who paid, plus a daily series. */
+export async function aiUsage(userId: string, days: number) {
+  const since = new Date(Date.now() - days * 86_400_000);
+  const rows = await prisma.aiUsageDaily.findMany({ where: { userId, day: { gte: since } }, orderBy: { day: 'asc' }, take: 5000 });
+  const byFeature = new Map<string, { feature: string; own: number; platform: number; calls: number }>();
+  const daily = new Map<string, number>();
+  let own = 0;
+  let platform = 0;
+  for (const r of rows) {
+    const f = byFeature.get(r.feature) || { feature: r.feature, own: 0, platform: 0, calls: 0 };
+    if (r.source === 'own') (f.own += r.tokens), (own += r.tokens);
+    else (f.platform += r.tokens), (platform += r.tokens);
+    f.calls += r.calls;
+    byFeature.set(r.feature, f);
+    const k = r.day.toISOString().slice(0, 10);
+    daily.set(k, (daily.get(k) || 0) + r.tokens);
+  }
+  return { days, totals: { own, platform, calls: [...byFeature.values()].reduce((n, f) => n + f.calls, 0) }, features: [...byFeature.values()].sort((a, b) => b.own + b.platform - (a.own + a.platform)), daily: [...daily].map(([day, tokens]) => ({ day, tokens })) };
+}
+
 export const apiKeysService = {
   async list(userId: string) {
     return (await prisma.userApiKey.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } })).map(view);

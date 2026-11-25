@@ -641,3 +641,17 @@ model UserApiKey {
 
   @@index([userId])
 }
+
+/// AI usage per person, day, feature and who paid (platform key or the person's own key), for the usage page.
+model AiUsageDaily {
+  id      String   @id @default(uuid())
+  userId  String
+  day     DateTime @db.Date
+  feature String   @db.VarChar(30)
+  source  String   @db.VarChar(10)
+  tokens  Int      @default(0)
+  calls   Int      @default(0)
+
+  @@unique([userId, day, feature, source])
+  @@index([userId, day])
+}

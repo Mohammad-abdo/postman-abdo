@@ -40,6 +40,10 @@ async function userUsed(userId: string) {
   return (await prisma.testAppAiUserUsage.findUnique({ where: { userId_day: { userId, day: today() } } }))?.tokens || 0;
 }
 
+async function logUse(userId: string, feature: string, source: 'own' | 'platform', tokens: number) {
+  await prisma.$executeRaw`INSERT INTO AiUsageDaily (id, userId, day, feature, source, tokens, calls) VALUES (UUID(), ${userId}, ${today()}, ${feature}, ${source}, ${tokens}, 1) ON DUPLICATE KEY UPDATE tokens = tokens + ${tokens}, calls = calls + 1`.catch(() => undefined);
+}
+
 /** The person's own key runs the request when they have a usable one: their money, their limits, none of the platform budgets. */
 async function viaOwnKey(own: { id: string; label: string; key: string }, prompt: { system: string; user: string }, maxTokens: number, extra: Pick<AiArgs, 'tool' | 'model' | 'images'>) {
   try {
@@ -54,9 +58,14 @@ async function viaOwnKey(own: { id: string; label: string; key: string }, prompt
   }
 }
 
-async function complete(workspaceId: string, userId: string, prompt: { system: string; user: string }, maxTokens: number, extra: Pick<AiArgs, 'tool' | 'model' | 'images'> = {}) {
+async function complete(workspaceId: string, userId: string, prompt: { system: string; user: string }, maxTokens: number, options: Pick<AiArgs, 'tool' | 'model' | 'images'> & { feature?: string } = {}) {
+  const { feature = 'other', ...extra } = options;
   const own = provider ? null : await apiKeysService.pick(userId);
-  if (own) return viaOwnKey(own, prompt, maxTokens, extra);
+  if (own) {
+    const used = await viaOwnKey(own, prompt, maxTokens, extra);
+    await logUse(userId, feature, 'own', used.inputTokens + used.outputTokens);
+    return used;
+  }
   if ((await used(workspaceId)) >= env.ai.dailyTokenBudget) throw new HttpError(429, 'The daily AI budget of this workspace is used up.');
   if ((await userUsed(userId)) >= env.ai.userDailyTokens) throw new HttpError(429, 'You have used your daily AI allowance. It resets at midnight UTC.');
   const out = await getProvider()({ ...prompt, maxTokens, ...extra }).catch((e: Error) => {
@@ -65,6 +74,7 @@ async function complete(workspaceId: string, userId: string, prompt: { system: s
   const tokens = out.inputTokens + out.outputTokens;
   await prisma.testAppAiUsage.upsert({ where: { workspaceId_day: { workspaceId, day: today() } }, create: { workspaceId, day: today(), tokens, calls: 1 }, update: { tokens: { increment: tokens }, calls: { increment: 1 } } });
   await prisma.$executeRaw`INSERT INTO TestAppAiUserUsage (id, userId, day, tokens) VALUES (UUID(), ${userId}, ${today()}, ${tokens}) ON DUPLICATE KEY UPDATE tokens = tokens + ${tokens}`;
+  await logUse(userId, feature, 'platform', tokens);
   return out;
 }
 
@@ -97,7 +107,7 @@ export const aiService = {
     const app = await authorize(userId, appId);
     const v = await prisma.testAppVersion.findFirst({ where: { id: app.currentVersionId || undefined, testAppId: appId } });
     if (!v) throw NotFound('Nothing generated yet');
-    const out = await complete(app.workspaceId, userId, suggestPrompt(bundleOf(v)), 1800);
+    const out = await complete(app.workspaceId, userId, suggestPrompt(bundleOf(v)), 1800, { feature: 'tests' });
     const parsed = parseSuggestions(out.text, bundleOf(v));
     return { ...parsed, provenance: 'ai', note: 'AI suggestions: review before accepting. They are not verified findings.', tokens: out.inputTokens + out.outputTokens };
   },
@@ -110,7 +120,7 @@ export const aiService = {
     const result = ((run.results || []) as unknown as TestResult[]).find((r) => r.id === testId);
     if (!result) throw NotFound('Test result not found');
     if (result.status === 'passed') throw BadRequest('This test passed; there is nothing to explain.');
-    const out = await complete(app.workspaceId, userId, explainPrompt(result), 400);
+    const out = await complete(app.workspaceId, userId, explainPrompt(result), 400, { feature: 'explain' });
     return { explanation: out.text.trim().slice(0, 1500), provenance: 'ai', note: 'AI explanation based only on the recorded evidence. Not verified.', tokens: out.inputTokens + out.outputTokens, sent: redact({ name: result.name, error: result.error }) };
   },
 
@@ -127,13 +137,13 @@ export const aiService = {
     const images = image ? [image] : undefined;
     const prompt = designPrompt(bundle, current, input.mode, input.prompt, input.focus, !!image);
     let tokens = 0;
-    let out = await complete(app.workspaceId, userId, prompt, 6000, { tool: designTool(count), model, images });
+    let out = await complete(app.workspaceId, userId, prompt, 6000, { tool: designTool(count), model, images, feature: input.mode });
     tokens += out.inputTokens + out.outputTokens;
     let parsed = parseProposals(out.toolInput, current);
     if (!parsed.proposals.length) {
       // One self-repair round: tell the model exactly what was rejected.
       const retry = [prompt.user, '', 'Your previous reply was rejected:', ...parsed.errors, 'Fix these problems and reply again.'].join('\n');
-      out = await complete(app.workspaceId, userId, { system: prompt.system, user: retry }, 6000, { tool: designTool(count), model, images });
+      out = await complete(app.workspaceId, userId, { system: prompt.system, user: retry }, 6000, { tool: designTool(count), model, images, feature: input.mode });
       tokens += out.inputTokens + out.outputTokens;
       parsed = parseProposals(out.toolInput, current);
     }
@@ -146,7 +156,7 @@ export const aiService = {
     await assertEnabled(userId);
     const app = await authorize(userId, appId);
     const bundle = await loadBundle(appId);
-    const out = await complete(app.workspaceId, userId, reviewPrompt(bundle, currentOf(current)), 3000, { tool: reviewTool });
+    const out = await complete(app.workspaceId, userId, reviewPrompt(bundle, currentOf(current)), 3000, { tool: reviewTool, feature: 'review' });
     const review = parseReview(out.toolInput);
     if (!review) throw new HttpError(422, 'The AI review could not be read. Try again.');
     return { ...review, provenance: 'ai', note: 'AI review: opinions, not verified findings.', tokens: out.inputTokens + out.outputTokens };

@@ -3,7 +3,7 @@ import { validateBody } from '../../core/middleware/validate.middleware';
 import { accountController } from './account.controller';
 import { audit } from '../../core/audit/audit.service';
 import { currentUserId } from '../../core/middleware/auth.middleware';
-import { apiKeysService, createKeySchema, updateKeySchema } from './apikeys.service';
+import { aiUsage, apiKeysService, createKeySchema, updateKeySchema } from './apikeys.service';
 import { avatarSchema, changePasswordSchema, preferencesSchema, updateProfileSchema } from './account.schema';
 
 export const accountRoutes = Router();
@@ -17,6 +17,7 @@ accountRoutes.get('/activity', accountController.activity);
 accountRoutes.put('/preferences', validateBody(preferencesSchema), accountController.updatePreferences);
 
 /* Bring your own AI key: several keys per person, each can be switched on or off and capped. Secrets never leave the server. */
+accountRoutes.get('/ai-usage', async (req, res) => res.json(await aiUsage(currentUserId(req), Math.min(Math.max(Number(req.query.days) || 30, 1), 90))));
 accountRoutes.get('/api-keys', async (req, res) => res.json(await apiKeysService.list(currentUserId(req))));
 accountRoutes.post('/api-keys', validateBody(createKeySchema), async (req, res) => {
   const out = await apiKeysService.create(currentUserId(req), req.body);
