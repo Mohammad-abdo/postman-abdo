@@ -3,7 +3,8 @@ import { env } from '../../config/env';
 import { prisma } from '../../core/database/prisma';
 import { Conflict, HttpError, NotFound } from '../../core/errors/http-error';
 import { seal, unseal } from '../../core/security/secret-box';
-import { anthropicProvider } from '../../shared/testapp/ai';
+import { assertPublicUrl } from '../../core/security/safe-fetch';
+import { AiProvider, anthropicProvider, geminiProvider, openaiProvider } from '../../shared/testapp/ai';
 
 const MAX_KEYS = 10;
 const today = () => {
@@ -12,13 +13,46 @@ const today = () => {
 };
 
 const limit = z.number().int().min(1000).max(1_000_000_000).nullable();
-export const createKeySchema = z.object({
-  label: z.string().trim().min(1).max(60),
-  key: z.string().trim().regex(/^sk-ant-[A-Za-z0-9_-]{20,300}$/, 'That does not look like an Anthropic API key (it starts with sk-ant-)'),
-  dailyLimit: limit.optional(),
-  totalLimit: limit.optional(),
-});
-export const updateKeySchema = z.object({ label: z.string().trim().min(1).max(60).optional(), active: z.boolean().optional(), dailyLimit: limit.optional(), totalLimit: limit.optional() });
+/** Providers a key can belong to. `ai` ones power the AI assistant; "other" is an encrypted vault for any token. */
+export const PROVIDERS = {
+  anthropic: { name: 'Anthropic (Claude)', ai: true, model: '', pattern: /^sk-ant-[A-Za-z0-9_-]{20,300}$/, hint: 'it starts with sk-ant-' },
+  openai: { name: 'OpenAI', ai: true, model: 'gpt-4o', pattern: /^sk-[A-Za-z0-9_-]{20,300}$/, hint: 'it starts with sk-' },
+  gemini: { name: 'Google Gemini', ai: true, model: 'gemini-2.0-flash', pattern: /^[A-Za-z0-9_-]{20,200}$/, hint: 'it is 20+ letters, digits, - or _' },
+  compatible: { name: 'OpenAI-compatible (OpenRouter, Groq, Mistral, DeepSeek, Ollama…)', ai: true, model: '', pattern: /^\S{8,500}$/, hint: 'no spaces, 8+ characters' },
+  other: { name: 'Other token (stored safely)', ai: false, model: '', pattern: /^\S{4,2000}$/, hint: 'no spaces' },
+} as const;
+export type ProviderId = keyof typeof PROVIDERS;
+const providerIds = Object.keys(PROVIDERS) as [ProviderId, ...ProviderId[]];
+const httpUrl = z.string().trim().url().max(300).refine((u) => /^https?:\/\//i.test(u), 'Use an http(s) address');
+
+export const createKeySchema = z
+  .object({
+    provider: z.enum(providerIds).default('anthropic'),
+    label: z.string().trim().min(1).max(60),
+    key: z.string().trim().min(4).max(2000),
+    baseUrl: httpUrl.optional(),
+    model: z.string().trim().min(1).max(80).optional(),
+    dailyLimit: limit.optional(),
+    totalLimit: limit.optional(),
+  })
+  .superRefine((v, ctx) => {
+    const p = PROVIDERS[v.provider];
+    if (!p.pattern.test(v.key)) ctx.addIssue({ code: 'custom', path: ['key'], message: `That does not look like a ${p.name.split(' (')[0]} key (${p.hint})` });
+    if (v.provider === 'compatible' && (!v.baseUrl || !v.model)) ctx.addIssue({ code: 'custom', path: ['baseUrl'], message: 'An OpenAI-compatible key needs the endpoint address and a model name' });
+    if (v.provider === 'other' && (v.dailyLimit || v.totalLimit)) ctx.addIssue({ code: 'custom', path: ['dailyLimit'], message: 'Usage limits only apply to AI keys' });
+  });
+export const updateKeySchema = z.object({ label: z.string().trim().min(1).max(60).optional(), active: z.boolean().optional(), dailyLimit: limit.optional(), totalLimit: limit.optional(), model: z.string().trim().min(1).max(80).nullable().optional() });
+
+/** Builds the caller for a stored key. Custom endpoints are checked for private addresses every time. */
+export async function providerFor(row: { provider: string; baseUrl: string | null; model: string | null }, apiKey: string, anthropicModel?: string): Promise<AiProvider> {
+  if (row.provider === 'openai') return openaiProvider({ apiKey, model: row.model || PROVIDERS.openai.model });
+  if (row.provider === 'gemini') return geminiProvider({ apiKey, model: row.model || PROVIDERS.gemini.model });
+  if (row.provider === 'compatible') {
+    await assertPublicUrl(row.baseUrl || '');
+    return openaiProvider({ apiKey, model: row.model || '', baseUrl: row.baseUrl || '' });
+  }
+  return anthropicProvider({ apiKey, model: row.model || anthropicModel || env.ai.model, baseUrl: env.ai.baseUrl });
+}
 
 type Row = Awaited<ReturnType<typeof prisma.userApiKey.findMany>>[number];
 const usedTodayOf = (r: Pick<Row, 'usedDay' | 'usedToday'>) => (r.usedDay && r.usedDay.getTime() === today().getTime() ? r.usedToday : 0);
@@ -30,8 +64,12 @@ export const blockedReason = (r: Pick<Row, 'active' | 'dailyLimit' | 'totalLimit
 const view = (r: Row) => ({
   id: r.id,
   provider: r.provider,
+  providerName: PROVIDERS[r.provider as ProviderId]?.name ?? r.provider,
+  ai: PROVIDERS[r.provider as ProviderId]?.ai ?? false,
+  baseUrl: r.baseUrl,
+  model: r.model,
   label: r.label,
-  masked: `sk-ant-••••${r.last4}`,
+  masked: `••••${r.last4}`,
   active: r.active,
   dailyLimit: r.dailyLimit,
   totalLimit: r.totalLimit,
@@ -77,7 +115,8 @@ export const apiKeysService = {
 
   async create(userId: string, input: z.infer<typeof createKeySchema>) {
     if ((await prisma.userApiKey.count({ where: { userId } })) >= MAX_KEYS) throw Conflict(`You can store up to ${MAX_KEYS} keys.`);
-    const row = await prisma.userApiKey.create({ data: { userId, label: input.label, secret: seal(input.key), last4: input.key.slice(-4), dailyLimit: input.dailyLimit ?? null, totalLimit: input.totalLimit ?? null } });
+    if (input.provider === 'compatible') await assertPublicUrl(input.baseUrl!);
+    const row = await prisma.userApiKey.create({ data: { userId, provider: input.provider, label: input.label, secret: seal(input.key), last4: input.key.slice(-4), baseUrl: input.provider === 'compatible' ? input.baseUrl! : null, model: input.model ?? null, dailyLimit: input.dailyLimit ?? null, totalLimit: input.totalLimit ?? null } });
     return view(row);
   },
 
@@ -89,6 +128,7 @@ export const apiKeysService = {
       data.active = input.active;
       if (input.active) data.lastError = null;
     }
+    if (input.model !== undefined) data.model = input.model;
     if (input.dailyLimit !== undefined) data.dailyLimit = input.dailyLimit;
     if (input.totalLimit !== undefined) data.totalLimit = input.totalLimit;
     return view(await prisma.userApiKey.update({ where: { id }, data }));
@@ -103,8 +143,9 @@ export const apiKeysService = {
   /** One tiny request to check that the key works. Counted against the key like any other call. */
   async test(userId: string, id: string) {
     const row = await owned(userId, id);
+    if (!PROVIDERS[row.provider as ProviderId]?.ai) throw new HttpError(400, 'This token is only stored. There is nothing to test it against.');
     try {
-      const out = await anthropicProvider({ apiKey: unseal(row.secret), model: env.ai.fastModel, baseUrl: env.ai.baseUrl })({ system: 'Reply with the single word ok.', user: 'ping', maxTokens: 8 });
+      const out = await (await providerFor(row, unseal(row.secret), env.ai.fastModel))({ system: 'Reply with the single word ok.', user: 'ping', maxTokens: 8 });
       await apiKeysService.record(id, out.inputTokens + out.outputTokens);
       return { ok: true };
     } catch (e) {
@@ -116,15 +157,22 @@ export const apiKeysService = {
 
   /** The person's first usable key (oldest first), decrypted for one request. Null when they have none to use. */
   async pick(userId: string) {
-    const rows = await prisma.userApiKey.findMany({ where: { userId, active: true, provider: 'anthropic' }, orderBy: { createdAt: 'asc' } });
+    const rows = await prisma.userApiKey.findMany({ where: { userId, active: true, provider: { in: ['anthropic', 'openai', 'gemini', 'compatible'] } }, orderBy: { createdAt: 'asc' } });
     const row = rows.find((r) => !blockedReason(r));
     if (!row) return null;
     try {
-      return { id: row.id, label: row.label, key: unseal(row.secret) };
+      return { id: row.id, label: row.label, key: unseal(row.secret), provider: row.provider, baseUrl: row.baseUrl, model: row.model };
     } catch {
       await prisma.userApiKey.update({ where: { id: row.id }, data: { active: false, lastError: 'Could not be decrypted (server secret changed). Add the key again.' } });
       return null;
     }
+  },
+
+  /** The stored token itself, for the owner only (vault tokens), so it can be copied back out. */
+  async reveal(userId: string, id: string) {
+    const row = await owned(userId, id);
+    if (row.provider !== 'other') throw new HttpError(400, 'AI keys cannot be shown again. Add a new one if you lost it.');
+    return { key: unseal(row.secret) };
   },
 
   /** Adds usage atomically (a new day starts from zero on its own). */

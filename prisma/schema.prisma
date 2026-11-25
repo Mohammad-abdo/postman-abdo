@@ -623,6 +623,9 @@ model UserApiKey {
   id         String    @id @default(uuid())
   userId     String
   provider   String    @default("anthropic") @db.VarChar(20)
+  /// Endpoint for OpenAI-compatible providers, model override for any AI provider
+  baseUrl    String?   @db.VarChar(300)
+  model      String?   @db.VarChar(80)
   label      String    @db.VarChar(60)
   secret     String    @db.Text
   last4      String    @db.VarChar(4)

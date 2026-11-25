@@ -24,7 +24,7 @@ function isBlockedIp(ip: string) {
 }
 
 /** Throws unless the URL is http(s) and (when SSRF protection is on) resolves only to public addresses. */
-async function assertPublicUrl(raw: string) {
+export async function assertPublicUrl(raw: string) {
   let url: URL;
   try {
     url = new URL(raw);

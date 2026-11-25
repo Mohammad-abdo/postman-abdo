@@ -7,7 +7,7 @@ import { DesignMode, Proposal, designPrompt, parseImage, designTool, parsePropos
 import { TestResult } from '../../shared/testapp/testing';
 import { Bundle } from '../../shared/testapp/types';
 import { z } from 'zod';
-import { apiKeysService } from '../account/apikeys.service';
+import { apiKeysService, providerFor } from '../account/apikeys.service';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
 
 const today = () => {
@@ -30,7 +30,7 @@ async function authorize(userId: string, appId: string) {
 
 const assertEnabled = async (userId: string) => {
   if (env.ai.enabled || provider) return;
-  if (!(await apiKeysService.pick(userId))) throw new HttpError(503, 'The AI assistant is not enabled on this server. Add your own Anthropic API key under Account, API keys to use it.');
+  if (!(await apiKeysService.pick(userId))) throw new HttpError(503, 'The AI assistant is not enabled on this server. Add your own API key (Claude, OpenAI, Gemini…) under Account, AI keys to use it.');
 };
 
 async function used(workspaceId: string) {
@@ -46,9 +46,11 @@ async function logUse(userId: string, feature: string, source: 'own' | 'platform
 }
 
 /** The person's own key runs the request when they have a usable one: their money, their limits, none of the platform budgets. */
-async function viaOwnKey(own: { id: string; label: string; key: string }, prompt: { system: string; user: string }, maxTokens: number, extra: Pick<AiArgs, 'tool' | 'model' | 'images'>) {
+async function viaOwnKey(own: { id: string; label: string; key: string; provider: string; baseUrl: string | null; model: string | null }, prompt: { system: string; user: string }, maxTokens: number, extra: Pick<AiArgs, 'tool' | 'model' | 'images'>) {
   try {
-    const out = await anthropicProvider({ apiKey: own.key, model: env.ai.model, baseUrl: env.ai.baseUrl })({ ...prompt, maxTokens, ...extra });
+    // Claude model names only make sense for Claude keys; other providers use the model saved with the key
+    const call = await providerFor(own, own.key);
+    const out = await call({ ...prompt, maxTokens, ...extra, model: own.provider === 'anthropic' ? extra.model : undefined });
     await apiKeysService.record(own.id, out.inputTokens + out.outputTokens);
     return out;
   } catch (e) {

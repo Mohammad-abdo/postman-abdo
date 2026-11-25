@@ -3,7 +3,7 @@ import { validateBody } from '../../core/middleware/validate.middleware';
 import { accountController } from './account.controller';
 import { audit } from '../../core/audit/audit.service';
 import { currentUserId } from '../../core/middleware/auth.middleware';
-import { aiUsage, apiKeysService, createKeySchema, updateKeySchema } from './apikeys.service';
+import { aiUsage, apiKeysService, createKeySchema, PROVIDERS, updateKeySchema } from './apikeys.service';
 import { avatarSchema, changePasswordSchema, preferencesSchema, updateProfileSchema } from './account.schema';
 
 export const accountRoutes = Router();
@@ -32,6 +32,12 @@ accountRoutes.patch('/api-keys/:id', validateBody(updateKeySchema), async (req, 
 accountRoutes.delete('/api-keys/:id', async (req, res) => {
   const out = await apiKeysService.remove(currentUserId(req), String(req.params.id));
   audit(req, { action: 'account.apikey.delete', targetType: 'apikey', targetId: String(req.params.id) });
+  res.json(out);
+});
+accountRoutes.get('/api-keys/providers', (_req, res) => res.json(Object.entries(PROVIDERS).map(([id, p]) => ({ id, name: p.name, ai: p.ai, defaultModel: p.model, hint: p.hint }))));
+accountRoutes.post('/api-keys/:id/reveal', async (req, res) => {
+  const out = await apiKeysService.reveal(currentUserId(req), String(req.params.id));
+  audit(req, { action: 'account.apikey.reveal', targetType: 'apikey', targetId: String(req.params.id) });
   res.json(out);
 });
 accountRoutes.post('/api-keys/:id/test', async (req, res) => res.json(await apiKeysService.test(currentUserId(req), String(req.params.id))));

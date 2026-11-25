@@ -162,3 +162,72 @@ export function anthropicProvider(cfg: { apiKey: string; model: string; baseUrl?
     };
   };
 }
+
+const failMessage = (name: string, status: number) => `AI provider returned ${status}`.replace('AI provider', name);
+
+/** OpenAI Chat Completions (also OpenRouter, Groq, Together, Mistral, DeepSeek, xAI, Ollama… via `baseUrl`). Tools are forced the same way. */
+export function openaiProvider(cfg: { apiKey: string; model: string; baseUrl?: string }, fetchImpl: typeof fetch = fetch): AiProvider {
+  return async ({ system, user, maxTokens, tool, images }) => {
+    const res = await fetchImpl(`${(cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      redirect: 'error',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify({
+        model: cfg.model,
+        max_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: images?.length ? [...images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mediaType};base64,${i.data}` } })), { type: 'text', text: user }] : user },
+        ],
+        ...(tool ? { tools: [{ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.schema } }], tool_choice: { type: 'function', function: { name: tool.name } } } : {}),
+      }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!res.ok) throw new Error(`AI provider returned ${res.status}`);
+    const data = (await res.json()) as { choices?: { message?: { content?: string | null; tool_calls?: { function?: { arguments?: string } }[] } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+    const msg = data.choices?.[0]?.message;
+    let toolInput: unknown;
+    const args = msg?.tool_calls?.[0]?.function?.arguments;
+    if (args) {
+      try {
+        toolInput = JSON.parse(args);
+      } catch {
+        /* left undefined: the caller reports an unreadable answer */
+      }
+    }
+    return { text: msg?.content || '', toolInput, inputTokens: data.usage?.prompt_tokens ?? 0, outputTokens: data.usage?.completion_tokens ?? 0 };
+  };
+}
+
+/** Google Gemini generateContent. Structured output goes through JSON mode with the schema in the prompt (Gemini accepts only a subset of JSON Schema). */
+export function geminiProvider(cfg: { apiKey: string; model: string }, fetchImpl: typeof fetch = fetch): AiProvider {
+  return async ({ system, user, maxTokens, tool, images }) => {
+    const text = tool ? `${user}
+
+Reply with ONLY one JSON object for the "${tool.name}" result, matching this JSON Schema:
+${JSON.stringify(tool.schema)}` : user;
+    const res = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent`, {
+      method: 'POST',
+      redirect: 'error',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': cfg.apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [...(images || []).map((i) => ({ inlineData: { mimeType: i.mediaType, data: i.data } })), { text }] }],
+        generationConfig: { maxOutputTokens: maxTokens, ...(tool ? { responseMimeType: 'application/json' } : {}) },
+      }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!res.ok) throw new Error(failMessage('AI provider', res.status));
+    const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+    const out = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+    let toolInput: unknown;
+    if (tool) {
+      try {
+        toolInput = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1));
+      } catch {
+        /* unreadable */
+      }
+    }
+    return { text: out, toolInput, inputTokens: data.usageMetadata?.promptTokenCount ?? 0, outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0 };
+  };
+}
