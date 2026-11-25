@@ -34,6 +34,7 @@ import { projectRoutes } from './modules/projects/project.routes';
 import { requestRoutes } from './modules/requests/request.routes';
 import { syncRoutes } from './modules/sync/sync.routes';
 import { testAppRoutes } from './modules/testapp/testapp.routes';
+import { assistRoutes } from './modules/testapp/assist.routes';
 import { publicTestAppRoutes } from './modules/testapp/public.routes';
 import { transferRoutes } from './modules/transfer/transfer.routes';
 import { workspaceRoutes } from './modules/workspaces/workspace.routes';
@@ -67,6 +68,7 @@ function apiRouter() {
   authed.use(maintenanceGate);
   authed.use('/execute', rateLimits.execute());
   authed.use('/testapps', rateLimits.testApp());
+  authed.use('/ai', rateLimits.testApp());
   authed.use(activityTracker);
 
   const modules: [string, Router][] = [
@@ -91,6 +93,7 @@ function apiRouter() {
     ['/chat', chatRoutes],
     ['/realtime', realtimeRoutes],
     ['/testapps', testAppRoutes],
+    ['/ai', assistRoutes],
   ];
   modules.forEach(([prefix, router]) => authed.use(prefix, router));
   api.use(authed);

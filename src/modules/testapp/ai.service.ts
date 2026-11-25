@@ -6,6 +6,7 @@ import { Customization, customizationSchema } from '../../shared/testapp/design/
 import { DesignMode, Proposal, designPrompt, parseImage, designTool, parseProposals, parseReview, reviewPrompt, reviewTool } from '../../shared/testapp/ai-design';
 import { TestResult } from '../../shared/testapp/testing';
 import { Bundle } from '../../shared/testapp/types';
+import { z } from 'zod';
 import { apiKeysService } from '../account/apikeys.service';
 import { assertWorkspaceMember } from '../workspaces/workspace.access';
 
@@ -58,7 +59,7 @@ async function viaOwnKey(own: { id: string; label: string; key: string }, prompt
   }
 }
 
-async function complete(workspaceId: string, userId: string, prompt: { system: string; user: string }, maxTokens: number, options: Pick<AiArgs, 'tool' | 'model' | 'images'> & { feature?: string } = {}) {
+async function complete(workspaceId: string | null, userId: string, prompt: { system: string; user: string }, maxTokens: number, options: Pick<AiArgs, 'tool' | 'model' | 'images'> & { feature?: string } = {}) {
   const { feature = 'other', ...extra } = options;
   const own = provider ? null : await apiKeysService.pick(userId);
   if (own) {
@@ -66,13 +67,15 @@ async function complete(workspaceId: string, userId: string, prompt: { system: s
     await logUse(userId, feature, 'own', used.inputTokens + used.outputTokens);
     return used;
   }
-  if ((await used(workspaceId)) >= env.ai.dailyTokenBudget) throw new HttpError(429, 'The daily AI budget of this workspace is used up.');
+  // no usable own key: the platform key only when the server really has AI enabled (a key may have hit its limit mid-request)
+  if (!env.ai.enabled && !provider) throw new HttpError(503, 'Your AI key reached its limit. Raise the limit, switch on another key, or try again tomorrow.');
+  if (workspaceId && (await used(workspaceId)) >= env.ai.dailyTokenBudget) throw new HttpError(429, 'The daily AI budget of this workspace is used up.');
   if ((await userUsed(userId)) >= env.ai.userDailyTokens) throw new HttpError(429, 'You have used your daily AI allowance. It resets at midnight UTC.');
   const out = await getProvider()({ ...prompt, maxTokens, ...extra }).catch((e: Error) => {
     throw new HttpError(502, `AI provider error: ${e.message}`);
   });
   const tokens = out.inputTokens + out.outputTokens;
-  await prisma.testAppAiUsage.upsert({ where: { workspaceId_day: { workspaceId, day: today() } }, create: { workspaceId, day: today(), tokens, calls: 1 }, update: { tokens: { increment: tokens }, calls: { increment: 1 } } });
+  if (workspaceId) await prisma.testAppAiUsage.upsert({ where: { workspaceId_day: { workspaceId, day: today() } }, create: { workspaceId, day: today(), tokens, calls: 1 }, update: { tokens: { increment: tokens }, calls: { increment: 1 } } });
   await prisma.$executeRaw`INSERT INTO TestAppAiUserUsage (id, userId, day, tokens) VALUES (UUID(), ${userId}, ${today()}, ${tokens}) ON DUPLICATE KEY UPDATE tokens = tokens + ${tokens}`;
   await logUse(userId, feature, 'platform', tokens);
   return out;
@@ -94,7 +97,101 @@ async function loadBundle(appId: string) {
 
 const bundleOf = (v: { model: unknown; contract: unknown; graph: unknown; schema: unknown; stats: unknown }) => ({ model: v.model, contract: v.contract, graph: v.graph, schema: v.schema, stats: v.stats }) as Bundle;
 
+const scriptTool = {
+  name: 'write_script',
+  description: 'Return the finished script and a short explanation.',
+  schema: {
+    type: 'object',
+    properties: {
+      code: { type: 'string', description: 'JavaScript for the Postman sandbox (pm.* API). Code only, no markdown fences.' },
+      explanation: { type: 'string', description: 'One or two sentences on what the script does' },
+    },
+    required: ['code', 'explanation'],
+  },
+};
+
+const SCRIPT_SYSTEM = [
+  'You write scripts for the Postman sandbox (JavaScript, the pm.* API: pm.test, pm.expect, pm.response, pm.environment, pm.collectionVariables, pm.variables, pm.request, pm.sendRequest).',
+  'Phase "prerequest" runs before the request; phase "test" runs after the response and should use pm.test with clear names and pm.expect assertions.',
+  'Use only what the request context shows; do not invent response fields you cannot see. If the response shape is unknown, assert on status code and JSON validity and say so in the explanation.',
+  'Keep scripts short, readable and commented only where it helps. Never include real secrets. Return only through the tool.',
+].join('\n');
+
+export const scriptInputSchema = z.object({
+  phase: z.enum(['prerequest', 'test']),
+  prompt: z.string().trim().min(3).max(1000),
+  context: z.object({ method: z.string().max(10).optional(), url: z.string().max(2000).optional(), body: z.any().optional(), sampleResponse: z.any().optional() }).optional(),
+  existing: z.string().max(8000).optional(),
+});
+
+const explainTool = {
+  name: 'explain_response',
+  description: 'Explain a failed or unexpected HTTP response to the developer.',
+  schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: 'What happened, in one or two plain sentences' },
+      causes: { type: 'array', maxItems: 4, items: { type: 'string' }, description: 'Most likely causes, most likely first' },
+      steps: { type: 'array', maxItems: 4, items: { type: 'string' }, description: 'Concrete things to try next' },
+    },
+    required: ['summary', 'causes', 'steps'],
+  },
+};
+
+export const explainResponseSchema = z.object({
+  method: z.string().max(10).optional(),
+  url: z.string().max(2000).optional(),
+  status: z.number().int().min(0).max(999).optional(),
+  statusText: z.string().max(100).optional(),
+  error: z.string().max(500).optional(),
+  contentType: z.string().max(100).optional(),
+  timeMs: z.number().optional(),
+  requestHeaders: z.array(z.string().max(100)).max(40).optional(),
+  requestBody: z.string().max(4000).optional(),
+  responseBody: z.string().max(4000).optional(),
+});
+
 export const aiService = {
+  /** Explains a failed response from its evidence only. Secrets are removed before anything is sent. */
+  async explainResponse(userId: string, input: z.infer<typeof explainResponseSchema>) {
+    await assertEnabled(userId);
+    const asObject = (t?: string) => {
+      if (!t) return undefined;
+      try {
+        return JSON.parse(t);
+      } catch {
+        return t;
+      }
+    };
+    const evidence = JSON.stringify(redact({ ...input, requestBody: asObject(input.requestBody), responseBody: asObject(input.responseBody) })).slice(0, 6000);
+    const system = 'You help developers debug HTTP requests. Use ONLY the evidence given (status, error, headers names, bodies). Separate what the evidence shows from what you infer, do not claim to know the server internals, and keep every item short. If the evidence is too thin, say what extra information would help.';
+    const out = await complete(null, userId, { system, user: `Evidence (secrets removed):\n${evidence}` }, 900, { tool: explainTool, model: env.ai.fastModel, feature: 'explain' });
+    const parsed = z.object({ summary: z.string().max(600), causes: z.array(z.string().max(300)).max(4), steps: z.array(z.string().max(300)).max(4) }).safeParse(out.toolInput);
+    if (!parsed.success) throw new HttpError(422, 'The AI answer could not be read. Try again.');
+    return { ...parsed.data, provenance: 'ai', note: 'AI explanation from the visible evidence. Not verified.', tokens: out.inputTokens + out.outputTokens };
+  },
+
+  /** Writes a Postman script from a description. Returned for the person to review and insert; never run or saved here. */
+  async script(userId: string, input: z.infer<typeof scriptInputSchema>) {
+    await assertEnabled(userId);
+    // a JSON body arrives as text: parse it so field names like "password" are caught by redact()
+    const ctx: Record<string, unknown> = { ...(input.context || {}) };
+    if (typeof ctx.body === 'string') {
+      try {
+        ctx.body = JSON.parse(ctx.body);
+      } catch {
+        /* plain text stays a string */
+      }
+    }
+    const context = JSON.stringify(redact(ctx)).slice(0, 4000);
+    const user = [`Phase: ${input.phase}`, `Request: ${input.prompt}`, input.existing ? `Existing script (extend or fix it):\n${input.existing}` : '', `Request context (secrets removed):\n${context}`].filter(Boolean).join('\n\n');
+    const out = await complete(null, userId, { system: SCRIPT_SYSTEM, user }, 2500, { tool: scriptTool, model: env.ai.fastModel, feature: 'script' });
+    const parsed = z.object({ code: z.string().min(1).max(12000), explanation: z.string().max(600) }).safeParse(out.toolInput);
+    if (!parsed.success) throw new HttpError(422, 'The AI did not return a usable script. Try rephrasing.');
+    const code = parsed.data.code.replace(/^```(?:javascript|js)?\n?|```$/g, '').trim();
+    return { code, explanation: parsed.data.explanation, provenance: 'ai', note: 'AI-written script: read it before you run it.', tokens: out.inputTokens + out.outputTokens };
+  },
+
   async status(userId: string, appId: string) {
     const app = await authorize(userId, appId);
     const own = await apiKeysService.pick(userId);
