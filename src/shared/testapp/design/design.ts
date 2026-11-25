@@ -2,7 +2,7 @@ import { ActionDef, ApiModel, AppSchema } from '../types';
 import { AppDesign, CardStyle, DesignEntity, DesignOp, DesignScreen, DesignSection, DomainId, EntityKind, FieldRoles, Intent, SectionType } from './design.types';
 import { Classified, classifyEndpoint, commonPrefix, exampleBody, fieldRoles, findLists, findRecord, isObj, kindOf, singular, tokens } from './entities';
 import { buildAuth } from './auth';
-import { isRtl, pickLook } from './look';
+import { brandColorsOf, isRtl, pickLook } from './look';
 import { buildRelations, enrichLists, folderServices, isLookup } from './lists';
 import { sampleProfile, sampleRows } from './sample';
 import { DOMAIN_WORDS, DOMAINS, FIELD_HINTS, humanize, kindDef, VERBS } from './lexicon';
@@ -508,7 +508,7 @@ export function buildDesign(model: ApiModel, schema: Pick<AppSchema, 'actions' |
     version: DESIGN_VERSION,
     domain,
     brand: { name: schema.app.name.replace(/\s*[—–-]\s*Test App$/i, '').replace(/\b(api|collection|postman)\b/gi, '').replace(/\s{2,}/g, ' ').trim() || 'My App', tagline: def.tagline, icon: def.icon },
-    theme: pickLook(domain.id, `${model.meta.name}|${model.endpoints.length}`, rtl),
+    theme: { ...pickLook(domain.id, `${model.meta.name}|${model.meta.sourceHash}|${model.endpoints.length}`, rtl), ...(brandColorsOf(model) || {}) },
     dir: rtl ? 'rtl' : 'ltr',
     auth,
     tabs,

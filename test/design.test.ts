@@ -218,3 +218,68 @@ describe('app design: field roles', () => {
     assert.equal(roles.date, 'created_at');
   });
 });
+
+describe('app design: brand colours from the collection', () => {
+  const withConfig = (body: unknown, path = '/api/config/theme') => {
+    const c = shopCollection() as any;
+    c.item.push(item('App theme', 'GET', `https://api.shop.test${path}`, { examples: [{ code: 200, body }] }));
+    return c;
+  };
+  it('uses a primary colour the collection declares, and derives an accent', () => {
+    const d = design(withConfig({ primaryColor: '#0A7D5A' }));
+    assert.equal(d.theme.primary, '#0A7D5A');
+    assert.match(d.theme.accent, /^#[0-9A-F]{6}$/);
+    assert.notEqual(d.theme.accent, d.theme.primary);
+  });
+  it('uses the declared accent as well', () => {
+    const d = design(withConfig({ brand: { primary_color: '#2255CC', accentColor: '#FFB020' } }));
+    assert.equal(d.theme.primary, '#2255CC');
+    assert.equal(d.theme.accent, '#FFB020');
+  });
+  it('darkens a brand colour that white text cannot read on', () => {
+    const d = design(withConfig({ primaryColor: '#FFE066' }));
+    assert.notEqual(d.theme.primary, '#FFE066');
+  });
+  it('ignores a plain colour field outside theme or brand endpoints (a product colour is not the brand)', () => {
+    const shirt = (body: unknown) => {
+      const c = shopCollection() as any;
+      c.item.push(item('Shirt', 'GET', 'https://api.shop.test/api/shirts/1', { examples: [{ code: 200, body }] }));
+      return c;
+    };
+    assert.notEqual(design(shirt({ id: 1, color: '#FF0000' })).theme.primary, '#FF0000');
+  });
+  it('accepts a plain colour field on a theme endpoint, and ignores near-white colours', () => {
+    assert.equal(design(withConfig({ color: '#7C3AED' })).theme.primary, '#7C3AED');
+    assert.notEqual(design(withConfig({ primaryColor: '#FFFFFF' })).theme.primary, '#FFFFFF');
+  });
+});
+
+describe('app design: every collection gets its own look', () => {
+  const named = (name: string) => {
+    const c = shopCollection() as any;
+    c.info.name = name;
+    return design(c).theme;
+  };
+  it('gives different collections of the same business type different designs', () => {
+    const names = ['Alpha Store API', 'Zed Market', 'Blue Cart', 'Oak Shop', 'Nile Bazaar', 'Pine Outlet', 'Sun Goods', 'Moon Mart'];
+    const looks = names.map(named);
+    const signature = (t: ReturnType<typeof named>) => `${t.primary}|${t.style}|${t.font}`;
+    assert.ok(new Set(looks.map(signature)).size >= 7, 'at least 7 of 8 shops look different');
+    assert.ok(new Set(looks.map((t) => t.primary)).size >= 7, 'colours differ');
+    assert.ok(new Set(looks.map((t) => t.style)).size >= 3, 'several styles are used');
+    assert.ok(new Set(looks.map((t) => t.font)).size >= 3, 'several fonts are used');
+  });
+  it('is stable for the same collection', () => {
+    assert.deepEqual(named('Alpha Store API'), named('Alpha Store API'));
+  });
+  it('keeps every generated look readable', async () => {
+    const { contrast } = await import('./helpers/contrast');
+    for (const n of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']) {
+      const t = named(`Shop ${n}`);
+      assert.ok(contrast(t.text, t.background)! >= 4.5, `text on background ${n}`);
+      assert.ok(contrast(t.text, t.surface)! >= 4.5, `text on cards ${n}`);
+      assert.ok(contrast(t.muted, t.surface)! >= 3, `muted on cards ${n}`);
+      assert.ok(contrast(t.mode === 'dark' ? '#04120A' : '#FFFFFF', t.primary)! >= 3, `button text ${n}`);
+    }
+  });
+});

@@ -154,22 +154,102 @@ function hash(text: string) {
   return h >>> 0;
 }
 
-/** The look for a collection: one of its business type's looks, picked by the collection's name. */
+/* Every collection gets its own variation of its business type's look: hue, saturation, style, fonts and surface tint all move with
+   a seed taken from the collection's name and content, so two shops (or two unknown APIs) no longer share one design. */
+
+const SERIOUS: DomainId[] = ['finance', 'news', 'business', 'realestate', 'health', 'jobs', 'tasks', 'education'];
+const STYLE_POOL: Record<'light' | 'dark' | 'serious', ThemeStyle[]> = {
+  light: ['soft', 'bold', 'minimal', 'playful', 'glass', 'elegant', 'classic', 'brutal'],
+  dark: ['bold', 'neon', 'glass', 'classic', 'minimal'],
+  serious: ['soft', 'minimal', 'classic', 'elegant', 'bold', 'glass'],
+};
+const FONT_POOL: Record<ThemeStyle, string[]> = {
+  soft: ['Poppins', 'Nunito', 'Figtree', 'Plus Jakarta Sans', 'DM Sans'],
+  bold: ['Manrope', 'Barlow', 'Outfit', 'Sora', 'Rubik'],
+  minimal: ['Inter', 'DM Sans', 'Urbanist', 'Figtree', 'Manrope'],
+  playful: ['Nunito', 'Outfit', 'Lexend', 'Rubik', 'Poppins'],
+  glass: ['Outfit', 'Urbanist', 'Sora', 'Plus Jakarta Sans', 'Manrope'],
+  elegant: ['DM Sans', 'Inter', 'Figtree', 'Manrope'],
+  brutal: ['Space Grotesk', 'Barlow', 'Sora', 'Rubik'],
+  neon: ['Space Grotesk', 'Sora', 'Outfit', 'Lexend'],
+  classic: ['Figtree', 'Manrope', 'Barlow', 'Inter', 'Rubik'],
+};
+const HEADING_SERIF = ['Playfair Display', 'Merriweather'];
+
+const clampN = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+function hslOf(hex: string): [number, number, number] {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (!d) return [0, 0, l];
+  const sat = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [(h * 60 + 360) % 360, sat, l];
+}
+function fromHsl(h: number, sat: number, l: number) {
+  const hh = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * sat;
+  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] = hh < 60 ? [c, x, 0] : hh < 120 ? [x, c, 0] : hh < 180 ? [0, c, x] : hh < 240 ? [0, x, c] : hh < 300 ? [x, 0, c] : [c, 0, x];
+  return toHex([(r + m) * 255, (g + m) * 255, (b + m) * 255]);
+}
+/** Lightens a colour until dark button text reads on it (used for dark-mode looks). */
+const readableOnDark = (hex: string) => {
+  let [h, sat, l] = hslOf(hex);
+  let out = hex;
+  for (let i = 0; i < 20 && ratio('#04120A', out) < 3; i++) out = fromHsl(h, sat, (l = Math.min(0.9, l + 0.04)));
+  return out;
+};
+
+/** The look for a collection: its business type's look, varied by a seed from the collection so each one is its own design. */
 export function pickLook(domain: DomainId, seed: string, rtl: boolean): DesignTheme {
   const looks = LOOKS[domain] || LOOKS.generic;
-  const look = looks[hash(seed) % looks.length];
-  const mode = look.mode || 'light';
-  const surfaces = { ...SURFACES[mode], ...(mode === 'light' ? STYLE_SURFACES[look.style] : {}) };
-  const preset = PRESETS[look.style];
+  const h = hash(seed);
+  const base = looks[h % looks.length];
+  const bits = (shift: number, mod: number) => (h >>> shift) % mod;
+
+  // style: usually a different one from the domain's pool; the domain's own favourite stays likely
+  const mode = base.mode || 'light';
+  const pool = STYLE_POOL[mode === 'dark' ? 'dark' : SERIOUS.includes(domain) ? 'serious' : 'light'];
+  const style: ThemeStyle = bits(3, 4) === 0 ? base.style : pool[bits(6, pool.length)];
+
+  // colours: keep the domain's mood but move the hue, saturation and depth
+  const [ph, ps, pl] = hslOf(base.primary);
+  const [ah, as, al] = hslOf(base.accent);
+  const shift = bits(9, 91) - 45;
+  const primaryHue = ph + shift;
+  const sat = clampN(ps + (bits(14, 21) - 10) / 100, 0.35, 0.92);
+  const lit = clampN(pl + (bits(18, 17) - 8) / 100, mode === 'dark' ? 0.5 : 0.3, mode === 'dark' ? 0.72 : 0.52);
+  let primary = fromHsl(primaryHue, sat, lit);
+  primary = mode === 'dark' ? readableOnDark(primary) : readableOnWhite(primary);
+  const accent = fromHsl(primaryHue + (((ah - ph + 540) % 360) - 180) + (bits(22, 31) - 15), clampN(as + (bits(26, 15) - 7) / 100, 0.4, 0.92), clampN(al, 0.4, 0.62));
+
+  // surfaces: a faint tint of the primary hue so light apps are not all the same grey
+  const [tintHue] = hslOf(primary);
+  const surfaces = { ...SURFACES[mode], ...(mode === 'light' ? STYLE_SURFACES[style] : {}) };
+  if (mode === 'light' && !STYLE_SURFACES[style]?.background) surfaces.background = fromHsl(tintHue, 0.28, 0.965);
+  if (mode === 'dark') surfaces.background = fromHsl(tintHue, 0.22, 0.065);
+  if (mode === 'dark') surfaces.surface = fromHsl(tintHue, 0.2, 0.105);
+
+  // fonts: one family per collection from the style's pool, a serif heading for the elegant look sometimes
+  const fonts = FONT_POOL[style];
+  const font = fonts[bits(2, fonts.length)];
+  const headingFont = style === 'elegant' && bits(12, 2) === 0 ? HEADING_SERIF[bits(13, 2)] : bits(5, 5) === 0 ? fonts[bits(8, fonts.length)] : undefined;
+
+  const preset = PRESETS[style];
+  const radius = clampN((preset.radius ?? 16) + (bits(20, 9) - 4), 0, 28);
   return {
     mode,
-    primary: look.primary,
-    accent: look.accent,
+    primary,
+    accent,
     ...surfaces,
-    radius: preset.radius ?? 16,
-    style: look.style,
-    font: rtl ? 'Cairo' : look.font,
-    headingFont: rtl ? 'Cairo' : look.headingFont,
+    radius,
+    style,
+    font: rtl ? 'Cairo' : font,
+    headingFont: rtl ? 'Cairo' : headingFont,
     density: preset.density,
     tabStyle: preset.tabStyle,
     headerStyle: preset.headerStyle,
@@ -184,4 +264,80 @@ export function isRtl(texts: string[]) {
   const arabic = (all.match(/[؀-ۿ]/g) || []).length;
   const latin = (all.match(/[A-Za-z]/g) || []).length;
   return arabic > 20 && arabic > latin * 0.6;
+}
+
+/* ------------------------------------ brand colours from the collection ------------------------------------ */
+
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+const BRAND_KEY = /(brand|primary|accent|theme|main|secondary|app)[-_ ]?colou?r|^(brand|primary|accent|theme)$/i;
+const PLAIN_COLOR_KEY = /^colou?r$/i;
+const CONFIG_PATH = /(theme|brand|config|setting|appearance|style|branding|app-?info|about)/i;
+
+const full = (h: string) => (h.length === 4 ? `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}` : h).toUpperCase();
+const rgbOf = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const lum = (h: string) => {
+  const [r, g, b] = rgbOf(h).map((v) => {
+    const x = v / 255;
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const ratio = (a: string, b: string) => {
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+};
+const toHex = (rgb: number[]) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+/** Darkens a colour step by step until white text reads on it (contrast 3:1 or better). */
+const readableOnWhite = (hex: string) => {
+  let rgb = rgbOf(hex);
+  for (let i = 0; i < 20 && ratio('#FFFFFF', toHex(rgb)) < 3; i++) rgb = rgb.map((v) => v * 0.9);
+  return toHex(rgb);
+};
+const rotate = (hex: string, deg: number) => {
+  const [r, g, b] = rgbOf(hex).map((v) => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (!d) return hex;
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h0 = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  const h = (h0 * 60 + deg + 720) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [rr, gg, bb] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return toHex([(rr + m) * 255, (gg + m) * 255, (bb + m) * 255]);
+};
+
+/**
+ * Colours the collection itself declares (a brand/theme/config response with `primaryColor`, `brand_color`, `accent`…).
+ * Plain `color` fields only count on theme/brand/config-like endpoints, so a product's colour never becomes the app's.
+ */
+export function brandColorsOf(model: { endpoints: { path: string; name: string; examples: { body?: unknown }[]; body: { example?: unknown } }[] }): { primary: string; accent: string } | null {
+  const found = new Map<string, number>();
+  const accents: string[] = [];
+  const walk = (v: unknown, configLike: boolean, depth = 0) => {
+    if (depth > 6 || v == null) return;
+    if (Array.isArray(v)) return v.slice(0, 5).forEach((x) => walk(x, configLike, depth + 1));
+    if (typeof v !== 'object') return;
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (typeof x === 'string' && HEX.test(x.trim()) && (BRAND_KEY.test(k) || (configLike && PLAIN_COLOR_KEY.test(k)))) {
+        const hex = full(x.trim());
+        if (/accent|secondary/i.test(k)) accents.push(hex);
+        else found.set(hex, (found.get(hex) || 0) + 1);
+      } else walk(x, configLike, depth + 1);
+    }
+  };
+  for (const e of model.endpoints) {
+    const configLike = CONFIG_PATH.test(`${e.path} ${e.name}`);
+    e.examples.forEach((x) => walk(x.body, configLike));
+    walk(e.body.example, configLike);
+  }
+  const primaryRaw = [...found.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!primaryRaw) return null;
+  // skip near-white and near-black "brand" colours: they cannot carry buttons
+  if (lum(primaryRaw) > 0.85 || lum(primaryRaw) < 0.005) return null;
+  const primary = readableOnWhite(primaryRaw);
+  return { primary, accent: accents[0] || rotate(primary, 35) };
 }
