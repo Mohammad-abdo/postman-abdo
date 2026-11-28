@@ -17,7 +17,7 @@ const limit = z.number().int().min(1000).max(1_000_000_000).nullable();
 export const PROVIDERS = {
   anthropic: { name: 'Anthropic (Claude)', ai: true, model: '', pattern: /^sk-ant-[A-Za-z0-9_-]{20,300}$/, hint: 'it starts with sk-ant-' },
   openai: { name: 'OpenAI', ai: true, model: 'gpt-4o', pattern: /^sk-[A-Za-z0-9_-]{20,300}$/, hint: 'it starts with sk-' },
-  gemini: { name: 'Google Gemini', ai: true, model: 'gemini-2.0-flash', pattern: /^[A-Za-z0-9_-]{20,200}$/, hint: 'it is 20+ letters, digits, - or _' },
+  gemini: { name: 'Google Gemini', ai: true, model: 'gemini-3.6-flash', pattern: /^[A-Za-z0-9_-]{20,200}$/, hint: 'it is 20+ letters, digits, - or _' },
   compatible: { name: 'OpenAI-compatible (OpenRouter, Groq, Mistral, DeepSeek, Ollama…)', ai: true, model: '', pattern: /^\S{8,500}$/, hint: 'no spaces, 8+ characters' },
   other: { name: 'Other token (stored safely)', ai: false, model: '', pattern: /^\S{4,2000}$/, hint: 'no spaces' },
 } as const;
@@ -46,7 +46,11 @@ export const updateKeySchema = z.object({ label: z.string().trim().min(1).max(60
 /** Builds the caller for a stored key. Custom endpoints are checked for private addresses every time. */
 export async function providerFor(row: { provider: string; baseUrl: string | null; model: string | null }, apiKey: string, anthropicModel?: string): Promise<AiProvider> {
   if (row.provider === 'openai') return openaiProvider({ apiKey, model: row.model || PROVIDERS.openai.model });
-  if (row.provider === 'gemini') return geminiProvider({ apiKey, model: row.model || PROVIDERS.gemini.model });
+  if (row.provider === 'gemini') {
+    const model = row.model?.replace(/^models\//, '');
+    const retired = model === 'gemini-2.0-flash' || model === 'gemini-2.0-flash-001';
+    return geminiProvider({ apiKey, model: retired ? PROVIDERS.gemini.model : model || PROVIDERS.gemini.model });
+  }
   if (row.provider === 'compatible') {
     await assertPublicUrl(row.baseUrl || '');
     return openaiProvider({ apiKey, model: row.model || '', baseUrl: row.baseUrl || '' });
